@@ -7,8 +7,34 @@ import json
 import os
 from datetime import datetime
 
-# --- 페이지 기본 설정 ---
+# --- 페이지 기본 설정 및 모바일 반응형 CSS 주입 ---
 st.set_page_config(page_title="When We Meet", page_icon="📅", layout="wide")
+
+st.markdown("""
+<style>
+/* 1. 모바일에서 7열 달력 레이아웃이 세로로 깨지는 현상 방지 (가로 스크롤 제공) */
+div[data-testid="stHorizontalBlock"]:has(> div:nth-child(7)) {
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    padding-bottom: 8px;
+}
+div[data-testid="stHorizontalBlock"]:has(> div:nth-child(7)) > div {
+    min-width: 105px !important; /* 모바일 셀 최소 너비 확보하여 글자/버튼 보존 */
+    flex: 0 0 auto !important;
+}
+
+/* 2. 가로 스크롤바 디자인을 깔끔하고 슬림하게 조정 */
+div[data-testid="stHorizontalBlock"]::-webkit-scrollbar {
+    height: 5px;
+}
+div[data-testid="stHorizontalBlock"]::-webkit-scrollbar-thumb {
+    background-color: #cbd5e1;
+    border-radius: 3px;
+}
+</style>
+""", unsafe_allow_html=True)
+
 
 # ────────────────────────────────────────────────
 # 파일 기반 영구 데이터베이스 (그룹용 & 개인용)
@@ -18,7 +44,6 @@ GROUP_DB_FILE = "shared_rooms.json"
 PERSONAL_DB_FILE = "personal_schedules.json"
 
 def load_global_rooms():
-    """파일에서 전체 그룹 방 데이터를 읽어옴"""
     if os.path.exists(GROUP_DB_FILE):
         try:
             with open(GROUP_DB_FILE, "r", encoding="utf-8") as f:
@@ -28,12 +53,10 @@ def load_global_rooms():
     return {}
 
 def save_global_rooms(rooms):
-    """전체 그룹 방 데이터를 파일에 영구 저장"""
     with open(GROUP_DB_FILE, "w", encoding="utf-8") as f:
         json.dump(rooms, f, ensure_ascii=False, indent=4)
 
 def load_personal_db():
-    """파일에서 개인 일정 데이터를 읽어옴"""
     if os.path.exists(PERSONAL_DB_FILE):
         try:
             with open(PERSONAL_DB_FILE, "r", encoding="utf-8") as f:
@@ -43,11 +66,9 @@ def load_personal_db():
     return {}
 
 def save_personal_db(db):
-    """개인 일정 데이터를 파일에 영구 저장"""
     with open(PERSONAL_DB_FILE, "w", encoding="utf-8") as f:
         json.dump(db, f, ensure_ascii=False, indent=4)
 
-# 색상 팔레트 (랜덤 bar 색상용)
 COLOR_PALETTE = [
     "#FF6B6B", "#FF8E53", "#FFC300", "#6BCB77", "#4D96FF",
     "#C77DFF", "#FF6FD8", "#00C9A7", "#F4845F", "#56CFE1",
@@ -64,7 +85,7 @@ def init_session():
     if "app_page" not in st.session_state:
         st.session_state.app_page = "HOME"
     if "user_id" not in st.session_state:
-        st.session_state.user_id = ""  # 개인 고유 ID 저장용
+        st.session_state.user_id = ""  
     if "my_events" not in st.session_state:
         st.session_state.my_events = []
     if "my_timetable" not in st.session_state:
@@ -80,24 +101,22 @@ def init_session():
     if "fixed_expander_open" not in st.session_state:
         st.session_state.fixed_expander_open = False
     if "my_joined_rooms" not in st.session_state:
-        st.session_state.my_joined_rooms = []
+        st.session_state.my_joined_rooms = {}  
 
 init_session()
 
 def _sync_my_events():
-    """내 일정 변경 시 실시간으로 파일 DB(개인 및 그룹)에 반영"""
-    # 1. 개인 저장소 동기화
     user_id = st.session_state.user_id
     if user_id:
         with _LOCK:
             p_db = load_personal_db()
             p_db[user_id] = {
                 "events": st.session_state.my_events,
-                "timetable": st.session_state.my_timetable
+                "timetable": st.session_state.my_timetable,
+                "joined_rooms": st.session_state.my_joined_rooms  
             }
             save_personal_db(p_db)
 
-    # 2. 활성화된 그룹 방 동기화
     nick = st.session_state.my_nickname
     code = st.session_state.current_group_code
     if nick and code:
@@ -109,15 +128,15 @@ def _sync_my_events():
                 save_global_rooms(rooms)
 
 # ────────────────────────────────────────────────
-# 사이드바 패널 (개인 로그인 / 동기화)
+# 사이드바 패널 
 # ────────────────────────────────────────────────
 with st.sidebar:
     st.header("👤 개인 일정 동기화")
-    st.caption("새로고침 후에도 나만의 일정(달력/시간표)을 유지하려면 고유 ID를 등록하고 불러오세요.")
+    st.caption("고유 ID를 연동하면 내 시간표와 소속 그룹 목록이 자동으로 복구됩니다.")
     
     user_id_input = st.text_input("개인 고유 ID 입력", value=st.session_state.user_id).strip()
     
-    if st.button("내 일정 불러오기 / 연동 🔄", use_container_width=True):
+    if st.button("내 일정 및 그룹 불러오기 🔄", use_container_width=True):
         if user_id_input:
             st.session_state.user_id = user_id_input
             with _LOCK:
@@ -125,33 +144,34 @@ with st.sidebar:
             if user_id_input in p_db:
                 st.session_state.my_events = p_db[user_id_input].get("events", [])
                 st.session_state.my_timetable = p_db[user_id_input].get("timetable", [])
-                st.success(f"✅ '{user_id_input}'님의 개인 일정을 복구했습니다!")
+                st.session_state.my_joined_rooms = p_db[user_id_input].get("joined_rooms", {})
+                st.success(f"✅ '{user_id_input}'님의 일정과 그룹을 불러왔습니다!")
             else:
-                # 새 ID인 경우 현재 세션에 있는 일정을 기본으로 등록해줌
                 with _LOCK:
                     p_db = load_personal_db()
                     p_db[user_id_input] = {
                         "events": st.session_state.my_events,
-                        "timetable": st.session_state.my_timetable
+                        "timetable": st.session_state.my_timetable,
+                        "joined_rooms": st.session_state.my_joined_rooms
                     }
                     save_personal_db(p_db)
-                st.success(f"✨ '{user_id_input}'님으로 새로운 개인 ID가 등록되었습니다!")
+                st.success(f"✨ '{user_id_input}'님으로 새로운 개인 ID가 생성되었습니다!")
             st.rerun()
         else:
             st.warning("ID를 입력해 주세요.")
             
     if st.session_state.user_id:
         st.markdown(f"--- \n🟢 현재 연동된 ID: **`{st.session_state.user_id}`**")
-        st.caption("작성하시는 모든 달력/시간표 일정이 이 ID에 실시간으로 자동 저장됩니다.")
         if st.button("연동 해제 (로그아웃)", type="secondary", use_container_width=True):
             st.session_state.user_id = ""
             st.session_state.my_events = []
             st.session_state.my_timetable = []
+            st.session_state.my_joined_rooms = {}
             st.session_state.app_page = "HOME"
             st.rerun()
 
 # ════════════════════════════════════════════════
-# 1. 홈 화면
+# 1. 홈 화면 (반응형 HTML 달력 적용)
 # ════════════════════════════════════════════════
 def page_home():
     st.title("🤝 When We Meet")
@@ -161,32 +181,35 @@ def page_home():
     cal_matrix = calendar.Calendar(firstweekday=6).monthdayscalendar(now.year, now.month)
     days = ["일", "월", "화", "수", "목", "금", "토"]
 
-    cols = st.columns(7)
-    for i, d in enumerate(days):
-        cols[i].markdown(f"<center><b>{d}</b></center>", unsafe_allow_html=True)
+    # 모바일 화면을 고려한 반응형 HTML 테이블 달력 구성
+    home_cal_html = """
+    <div style='overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 20px;'>
+      <table style='width:100%; min-width:450px; border-collapse:collapse; text-align:center; font-size:14px;'>
+        <tr style='background-color:#F8FAFC; font-weight:bold; color:#475569;'>
+    """
+    for d in days:
+        home_cal_html += f"<th style='padding:10px; border:1px solid #e2e8f0;'>{d}</th>"
+    home_cal_html += "</tr>"
 
     for week in cal_matrix:
-        cols = st.columns(7)
-        for idx, day_num in enumerate(week):
+        home_cal_html += "<tr>"
+        for day_num in week:
             if day_num != 0:
                 if day_num == now.day:
-                    cols[idx].markdown(
-                        f"<div style='background-color:#E3F2FD; text-align:center; "
-                        f"padding:10px; border-radius:5px; border:1px solid #2196F3; "
-                        f"font-weight:bold; color:black;'>{day_num}<br><span style='color:blue; "
-                        f"font-size:10px;'>Today</span></div>",
-                        unsafe_allow_html=True
+                    home_cal_html += (
+                        f"<td style='background-color:#EFF6FF; border:2px solid #3B82F6; "
+                        f"padding:12px; font-weight:bold; color:#1E3A8A;'>{day_num}<br>"
+                        f"<span style='color:#2563EB; font-size:10px;'>Today</span></td>"
                     )
                 else:
-                    cols[idx].markdown(
-                        f"<div style='background-color:white; text-align:center; "
-                        f"padding:10px; border-radius:5px; border:1px solid #ddd; color:black;'>{day_num}</div>",
-                        unsafe_allow_html=True
-                    )
+                    home_cal_html += f"<td style='background-color:white; border:1px solid #e2e8f0; padding:12px; color:#334155;'>{day_num}</td>"
             else:
-                cols[idx].write("")
+                home_cal_html += "<td style='border:1px solid #e2e8f0; background-color:#F8FAFC;'></td>"
+        home_cal_html += "</tr>"
+    home_cal_html += "</table></div>"
+    
+    st.markdown(home_cal_html, unsafe_allow_html=True)
 
-    st.markdown("<br><br>", unsafe_allow_html=True)
     st.markdown("---")
     b1, b2 = st.columns(2)
     with b1:
@@ -214,7 +237,7 @@ def page_my_calendar():
 
     st.title("📆 나의 일정 달력")
     if not st.session_state.user_id:
-        st.warning("⚠️ 현재 비로그인 상태입니다. 왼쪽 사이드바에서 개인 고유 ID를 연동하시면 새로고침해도 일정이 안전하게 저장됩니다!")
+        st.warning("⚠️ 현재 비로그인 상태입니다. 왼쪽 사이드바에서 고유 ID를 연동해 주세요!")
 
     n1, n2, n3 = st.columns([1, 4, 1])
     with n1:
@@ -225,11 +248,7 @@ def page_my_calendar():
                 st.session_state.view_year -= 1
             st.rerun()
     with n2:
-        st.markdown(
-            f"<h3 style='text-align:center;'>{st.session_state.view_year}년 "
-            f"{st.session_state.view_month}월</h3>",
-            unsafe_allow_html=True
-        )
+        st.markdown(f"<h3 style='text-align:center;'>{st.session_state.view_year}년 {st.session_state.view_month}월</h3>", unsafe_allow_html=True)
     with n3:
         if st.button(">", use_container_width=True):
             st.session_state.view_month += 1
@@ -249,17 +268,8 @@ def page_my_calendar():
         cols = st.columns(7)
         for idx, day_num in enumerate(week):
             if day_num != 0:
-                date_str = (
-                    f"{st.session_state.view_year}-"
-                    f"{st.session_state.view_month:02d}-"
-                    f"{day_num:02d}"
-                )
-
-                cell_html = (
-                    f"<div style='min-height:80px; border:1px solid #ddd; "
-                    f"padding:5px; border-radius:5px; color:black;'>"
-                    f"<div style='font-weight:bold; font-size:14px;'>{day_num}</div>"
-                )
+                date_str = f"{st.session_state.view_year}-{st.session_state.view_month:02d}-{day_num:02d}"
+                cell_html = f"<div style='min-height:80px; border:1px solid #ddd; padding:5px; border-radius:5px; color:black;'><div style='font-weight:bold; font-size:14px;'>{day_num}</div>"
 
                 day_events = [
                     (i, ev) for i, ev in enumerate(st.session_state.my_events)
@@ -270,11 +280,7 @@ def page_my_calendar():
                     color = ev.get("color", "#FFCDD2")
                     s_time = ev["start"].split()[1] if " " in ev["start"] else ""
                     e_time = ev["end"].split()[1] if " " in ev["end"] else ""
-                    cell_html += (
-                        f"<div style='background-color:{color}; font-size:10px; "
-                        f"margin-top:2px; border-radius:3px; padding:2px; color:#333;'>"
-                        f"🕐 {s_time}~{e_time} {ev['title']}</div>"
-                    )
+                    cell_html += f"<div style='background-color:{color}; font-size:10px; margin-top:2px; border-radius:3px; padding:2px; color:#333;'>🕐 {s_time}~{e_time} {ev['title']}</div>"
 
                 cell_html += "</div>"
                 cols[idx].markdown(cell_html, unsafe_allow_html=True)
@@ -284,22 +290,18 @@ def page_my_calendar():
                     st.session_state.editing_event_idx = None
 
                 for ev_i, ev in day_events:
-                    if cols[idx].button(
-                        f"✏️ {ev['title'][:6]}",
-                        key=f"edit_ev_{date_str}_{ev_i}"
-                    ):
+                    if cols[idx].button(f"✏️ {ev['title'][:5]}", key=f"edit_ev_{date_str}_{ev_i}"):
                         st.session_state.editing_event_idx = ev_i
                         st.session_state.active_add_day = None
             else:
                 cols[idx].write("")
 
-    # 수정 폼
+    # 수정 및 추가 폼 섹션
     ev_idx = st.session_state.editing_event_idx
     if ev_idx is not None and 0 <= ev_idx < len(st.session_state.my_events):
         ev = st.session_state.my_events[ev_idx]
         st.markdown("---")
         st.subheader(f"📋 일정 상세 / 수정")
-
         try:
             s_parts = ev["start"].split()
             e_parts = ev["end"].split()
@@ -308,12 +310,8 @@ def page_my_calendar():
             e_d = datetime.strptime(e_parts[0], "%Y-%m-%d").date()
             e_t = datetime.strptime(e_parts[1], "%H:%M").time()
         except Exception:
-            s_d = datetime.now().date()
-            s_t = datetime.strptime("09:00", "%H:%M").time()
-            e_d = datetime.now().date()
-            e_t = datetime.strptime("18:00", "%H:%M").time()
-
-        st.info(f"📌 **{ev['title']}** | 시작: {ev['start']}  →  종료: {ev['end']}")
+            s_d, s_t = datetime.now().date(), datetime.strptime("09:00", "%H:%M").time()
+            e_d, e_t = datetime.now().date(), datetime.strptime("18:00", "%H:%M").time()
 
         with st.form("edit_event_form"):
             new_title = st.text_input("일정 제목", value=ev["title"])
@@ -322,12 +320,9 @@ def page_my_calendar():
             new_e_date = st.date_input("종료 날짜", value=e_d)
             new_e_time = st.time_input("종료 시간", value=e_t)
             col_save, col_del, col_cancel = st.columns(3)
-            with col_save:
-                saved = st.form_submit_button("💾 저장")
-            with col_del:
-                deleted = st.form_submit_button("🗑️ 삭제")
-            with col_cancel:
-                cancelled = st.form_submit_button("✖ 취소")
+            with col_save: saved = st.form_submit_button("💾 저장")
+            with col_del: deleted = st.form_submit_button("🗑️ 삭제")
+            with col_cancel: cancelled = st.form_submit_button("✖ 취소")
 
         if saved:
             st.session_state.my_events[ev_idx] = {
@@ -348,22 +343,15 @@ def page_my_calendar():
             st.session_state.editing_event_idx = None
             st.rerun()
 
-    # 일정 추가 폼
     add_day = st.session_state.active_add_day
     if add_day:
         st.markdown("---")
         st.subheader(f"➕ {add_day}일 일정 추가")
         with st.form("event_form"):
             ev_title = st.text_input("일정 제목")
-            s_date = st.date_input(
-                "시작 날짜",
-                value=datetime(st.session_state.view_year, st.session_state.view_month, add_day)
-            )
+            s_date = st.date_input("시작 날짜", value=datetime(st.session_state.view_year, st.session_state.view_month, add_day))
             s_time = st.time_input("시작 시간", value=datetime.strptime("09:00", "%H:%M").time())
-            e_date = st.date_input(
-                "종료 날짜",
-                value=datetime(st.session_state.view_year, st.session_state.view_month, add_day)
-            )
+            e_date = st.date_input("종료 날짜", value=datetime(st.session_state.view_year, st.session_state.view_month, add_day))
             e_time = st.time_input("종료 시간", value=datetime.strptime("18:00", "%H:%M").time())
 
             if st.form_submit_button("저장"):
@@ -377,13 +365,13 @@ def page_my_calendar():
                 _sync_my_events()
                 st.rerun()
 
-    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
     if st.button("⚙️ 고정 일정 섹션 (고정 시간표 페이지로 이동)", type="secondary", use_container_width=True):
         st.session_state.app_page = "FIXED_TIMETABLE"
         st.rerun()
 
 # ════════════════════════════════════════════════
-# 2-1. 고정 시간표
+# 2-1. 고정 시간표 (모바일 가로스크롤 적용)
 # ════════════════════════════════════════════════
 def page_fixed_timetable():
     h_col1, h_col2 = st.columns([5, 1])
@@ -394,10 +382,7 @@ def page_fixed_timetable():
 
     st.title("🕞 고정 시간표 목록")
 
-    with st.expander(
-        "➕ 누르면 고정 일정 추가 창 열림",
-        expanded=st.session_state.fixed_expander_open
-    ):
+    with st.expander("➕ 누르면 고정 일정 추가 창 열림", expanded=st.session_state.fixed_expander_open):
         f_title = st.text_input("일정 제목", key="ft_title")
         f_day = st.selectbox("요일", ["월", "화", "수", "목", "금", "토", "일"], key="ft_day")
         f_start = st.text_input("시작 시각 (예: 09:15)", value="09:00", key="ft_start")
@@ -406,11 +391,7 @@ def page_fixed_timetable():
         if st.button("저장", key="ft_save", type="primary"):
             if f_title:
                 st.session_state.my_timetable.append({
-                    "title": f_title,
-                    "day": f_day,
-                    "start": f_start,
-                    "end": f_end,
-                    "color": get_random_color(),
+                    "title": f_title, "day": f_day, "start": f_start, "end": f_end, "color": get_random_color()
                 })
                 st.session_state.fixed_expander_open = False
                 _sync_my_events()
@@ -424,12 +405,7 @@ def page_fixed_timetable():
             color = t.get("color", "#BBDEFB")
             col_a, col_b = st.columns([5, 1])
             with col_a:
-                st.markdown(
-                    f"<div style='background-color:{color}; padding:8px; border-radius:5px; "
-                    f"margin-bottom:4px; color:#333;'> "
-                    f"<b>{t['title']}</b> | {t['day']}요일 {t['start']} ~ {t['end']}</div>",
-                    unsafe_allow_html=True
-                )
+                st.markdown(f"<div style='background-color:{color}; padding:8px; border-radius:5px; margin-bottom:4px; color:#333;'><b>{t['title']}</b> | {t['day']}요일 {t['start']} ~ {t['end']}</div>", unsafe_allow_html=True)
             with col_b:
                 if st.button("🗑️", key=f"del_tt_{ti}"):
                     st.session_state.my_timetable.pop(ti)
@@ -439,9 +415,10 @@ def page_fixed_timetable():
     st.write("### 📊 일주일 타임라인 도표 (15분 단위)")
     week_days_header = ["시간", "월", "화", "수", "목", "금", "토", "일"]
 
+    # 모바일에서 표가 깨지지 않게 오버플로우 감싸기 적용
     table_html = (
-        "<table style='width:100%; border-collapse:collapse; text-align:center; "
-        "font-size:12px; border:1px solid #ddd;'>"
+        "<div style='overflow-x: auto; -webkit-overflow-scrolling: touch;'>"
+        "<table style='width:100%; min-width:650px; border-collapse:collapse; text-align:center; font-size:12px; border:1px solid #ddd;'>"
         "<tr style='background-color:#F5F5F5; font-weight:bold; color:black;'>"
     )
     for d in week_days_header:
@@ -451,10 +428,7 @@ def page_fixed_timetable():
     for hour in range(24):
         for minute in [0, 15, 30, 45]:
             time_str = f"{hour:02d}:{minute:02d}"
-            table_html += (
-                f"<tr><td style='border:1px solid #ddd; background-color:#FAFAFA; "
-                f"font-weight:bold; color:black;'>{time_str}</td>"
-            )
+            table_html += f"<tr><td style='border:1px solid #ddd; background-color:#FAFAFA; font-weight:bold; color:black;'>{time_str}</td>"
             for d_name in ["월", "화", "수", "목", "금", "토", "일"]:
                 bg_color = "white"
                 cell_text = ""
@@ -462,66 +436,52 @@ def page_fixed_timetable():
                     if t["day"] == d_name and t["start"] <= time_str < t["end"]:
                         bg_color = t.get("color", "#BBDEFB")
                         cell_text = t["title"]
-                table_html += (
-                    f"<td style='border:1px solid #ddd; background-color:{bg_color}; "
-                    f"color:#1565C0;'>{cell_text}</td>"
-                )
+                table_html += f"<td style='border:1px solid #ddd; background-color:{bg_color}; color:#1565C0;'>{cell_text}</td>"
             table_html += "</tr>"
-    table_html += "</table>"
+    table_html += "</table></div>"
     st.markdown(table_html, unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════
 # 3. 그룹 목록 및 가입
 # ════════════════════════════════════════════════
 def page_group_list():
-    st.title("👥 그룹 방 관리 및 로그인 패널")
+    st.title("👥 그룹 방 관리 패널")
     if st.button("< 홈으로 이동"):
         st.session_state.app_page = "HOME"
         st.rerun()
 
-    st.markdown("### ➕ 그룹 생성 및 기존 기록 불러오기")
-    g_action = st.radio(
-        "작업을 선택하세요",
-        ["선택 안 함", "새로운 그룹 만들기", "코드로 그룹 입장하기 (또는 이어하기)"],
-        horizontal=True
-    )
+    st.markdown("### ➕ 그룹 신규 생성 및 코드 참여")
+    g_action = st.radio("작업을 선택하세요", ["선택 안 함", "새로운 그룹 만들기", "코드로 그룹 입장하기"], horizontal=True)
 
     if g_action == "새로운 그룹 만들기":
         g_name = st.text_input("새로운 그룹명 입력")
-        nickname = st.text_input("내 닉네임 설정 입력", value=st.session_state.user_id) # 개인 ID가 있으면 기본값으로 채워줌
+        nickname = st.text_input("내 닉네임 설정 입력", value=st.session_state.user_id if st.session_state.user_id else "")
         if st.button("방 생성 및 입장 완료 🚀"):
             if g_name and nickname:
                 with _LOCK:
                     rooms = load_global_rooms()
                     while True:
                         code = "".join(random.choices(string.ascii_uppercase + string.digits, k=5))
-                        if code not in rooms:
-                            break
+                        if code not in rooms: break
                     rooms[code] = {
                         "name": g_name,
-                        "members": {
-                            nickname: {
-                                "events": st.session_state.my_events,
-                                "timetable": st.session_state.my_timetable,
-                            }
-                        },
+                        "members": {nickname: {"events": st.session_state.my_events, "timetable": st.session_state.my_timetable}},
                     }
                     save_global_rooms(rooms)
                 st.session_state.my_nickname = nickname
                 st.session_state.current_group_code = code
                 st.session_state.run_match = False
-                if code not in st.session_state.my_joined_rooms:
-                    st.session_state.my_joined_rooms.append(code)
-                st.success(f"✅ 방 생성 완료! 친구에게 이 코드를 공유하세요: **`{code}`**")
+                st.session_state.my_joined_rooms[code] = nickname  
+                _sync_my_events()  
+                st.success(f"✅ 방 생성 완료! 입장 코드: **`{code}`**")
                 st.session_state.app_page = "GROUP_ROOM"
                 st.rerun()
             else:
                 st.warning("그룹명과 닉네임을 모두 입력해주세요.")
 
-    elif g_action == "코드로 그룹 입장하기 (또는 이어하기)":
-        st.info("💡 새로고침을 하셨다면, 이전에 사용하던 방 코드와 닉네임을 그대로 입력 시 일정이 자동으로 복구됩니다.")
+    elif g_action == "코드로 그룹 입장하기":
         join_code = st.text_input("고유 입장 코드 5자리 입력").strip().upper()
-        nickname = st.text_input("내 닉네임 설정 입력", value=st.session_state.user_id)
+        nickname = st.text_input("내 닉네임 설정 입력", value=st.session_state.user_id if st.session_state.user_id else "")
         if st.button("해당 코드 방 입장하기 🚪"):
             if join_code and nickname:
                 with _LOCK:
@@ -531,63 +491,69 @@ def page_group_list():
                         if nickname in rooms[join_code]["members"]:
                             st.session_state.my_events = rooms[join_code]["members"][nickname].get("events", [])
                             st.session_state.my_timetable = rooms[join_code]["members"][nickname].get("timetable", [])
-                            st.success(f"🔄 그룹 내 기존 기록({nickname})이 확인되어 일정을 성공적으로 복구했습니다!")
                         else:
-                            rooms[join_code]["members"][nickname] = {
-                                "events": st.session_state.my_events,
-                                "timetable": st.session_state.my_timetable,
-                            }
+                            rooms[join_code]["members"][nickname] = {"events": st.session_state.my_events, "timetable": st.session_state.my_timetable}
                             save_global_rooms(rooms)
-                            st.success(f"🎉 {nickname}님, 새 멤버로 방에 입장했습니다!")
-                    
                     st.session_state.my_nickname = nickname
                     st.session_state.current_group_code = join_code
                     st.session_state.run_match = False
-                    if join_code not in st.session_state.my_joined_rooms:
-                        st.session_state.my_joined_rooms.append(join_code)
+                    st.session_state.my_joined_rooms[join_code] = nickname  
+                    _sync_my_events()  
+                    st.success(f"🎉 {nickname}님, 방에 입장했습니다!")
                     st.session_state.app_page = "GROUP_ROOM"
                     st.rerun()
                 else:
-                    st.error("유효하지 않거나 존재하지 않는 코드입니다.")
+                    st.error("존재하지 않는 코드입니다.")
             else:
                 st.warning("코드와 닉네임을 모두 입력해 주세요.")
 
     st.markdown("---")
-    st.subheader("내가 참여 중인 방 리스트")
-    with _LOCK:
-        rooms = load_global_rooms()
-    my_codes = st.session_state.my_joined_rooms
-    my_rooms = {c: rooms[c] for c in my_codes if c in rooms}
+    st.subheader("🏠 내가 참여 중인 방 리스트")
+    with _LOCK: rooms = load_global_rooms()
+        
+    my_rooms_dict = st.session_state.my_joined_rooms
+    active_my_rooms = {c: (rooms[c], nick) for c, nick in my_rooms_dict.items() if c in rooms}
     
-    if not my_rooms:
-        st.caption("현재 세션에 활성화된 방이 없습니다. 새로고침을 하셨다면 위 메뉴에서 방 코드와 닉네임을 적어 이어하기를 해주세요.")
+    if not active_my_rooms:
+        st.caption("현재 참여 중인 방이 없습니다.")
     else:
-        for c, info in my_rooms.items():
-            col_r1, col_r2 = st.columns([4, 1])
+        for c, (info, nick) in active_my_rooms.items():
+            col_r1, col_r2, col_r3 = st.columns([3, 1, 1])
             with col_r1:
-                st.info(f"🏠 **{info['name']}** (코드: `{c}`) | 참여 인원: {len(info['members'])}명")
+                st.info(f"🏠 **{info['name']}** (코드: `{c}`) | 닉네임: `{nick}` | 참여: {len(info['members'])}명")
             with col_r2:
-                if st.button("입장", key=f"enter_room_{c}", use_container_width=True):
+                if st.button("입장 🚪", key=f"enter_room_{c}", use_container_width=True):
                     st.session_state.current_group_code = c
-                    nick = st.session_state.my_nickname
+                    st.session_state.my_nickname = nick
                     if nick in info["members"]:
                         st.session_state.my_events = info["members"][nick].get("events", [])
                         st.session_state.my_timetable = info["members"][nick].get("timetable", [])
                     st.session_state.app_page = "GROUP_ROOM"
                     st.session_state.run_match = False
                     st.rerun()
+            with col_r3:
+                if st.button("나가기 ❌", key=f"leave_room_{c}", use_container_width=True):
+                    with _LOCK:
+                        g_rooms = load_global_rooms()
+                        if c in g_rooms and nick in g_rooms[c]["members"]:
+                            del g_rooms[c]["members"][nick]
+                            if not g_rooms[c]["members"]: del g_rooms[c]
+                            save_global_rooms(g_rooms)
+                    del st.session_state.my_joined_rooms[c]
+                    _sync_my_events()
+                    st.success(f"'{info['name']}' 방에서 퇴장했습니다.")
+                    st.rerun()
 
 # ════════════════════════════════════════════════
-# 4. 그룹 방 화면
+# 4. 그룹 방 화면 (모바일 스크롤 완벽 최적화)
 # ════════════════════════════════════════════════
 def page_group_room():
     code = st.session_state.current_group_code
-    with _LOCK:
-        rooms = load_global_rooms()
+    with _LOCK: rooms = load_global_rooms()
     g_info = rooms.get(code)
 
     if not g_info:
-        st.error("방 정보를 찾을 수 없습니다. (서버에서 만료되거나 삭제된 방일 수 있습니다)")
+        st.error("방 정보를 찾을 수 없습니다.")
         if st.button("그룹 목록으로"):
             st.session_state.app_page = "GROUP_LIST"
             st.rerun()
@@ -595,17 +561,29 @@ def page_group_room():
 
     st.title(f"🏢 그룹 방: {g_info['name']}")
 
-    c_hdr1, c_hdr2, c_hdr3 = st.columns([3, 1, 1])
+    c_hdr1, c_hdr2, c_hdr3, c_hdr4 = st.columns([2, 1, 1, 1])
     with c_hdr1:
-        if st.button("👥 참여자 목록 확인"):
-            st.write(
-                f"현재 참여자 ({len(g_info['members'])}명): "
-                f"{', '.join(list(g_info['members'].keys()))}"
-            )
-    with c_hdr2:
-        st.warning(f"📋 코드: `{code}`")
+        if st.button("👥 참여자 목록 확인", use_container_width=True):
+            st.write(f"현재 참여자 ({len(g_info['members'])}명): {', '.join(list(g_info['members'].keys()))}")
+    with c_hdr2: st.warning(f"📋 코드: `{code}`")
     with c_hdr3:
-        if st.button("< 그룹 목록"):
+        if st.button("< 그룹 목록", use_container_width=True):
+            st.session_state.app_page = "GROUP_LIST"
+            st.rerun()
+    with c_hdr4:
+        if st.button("🚪 그룹 나가기", type="secondary", use_container_width=True):
+            nick = st.session_state.my_nickname
+            with _LOCK:
+                g_rooms = load_global_rooms()
+                if code in g_rooms and nick in g_rooms[code]["members"]:
+                    del g_rooms[code]["members"][nick]
+                    if not g_rooms[code]["members"]: del g_rooms[code]
+                    save_global_rooms(g_rooms)
+            if code in st.session_state.my_joined_rooms:
+                del st.session_state.my_joined_rooms[code]
+            _sync_my_events()
+            st.session_state.current_group_code = None
+            st.session_state.my_nickname = ""
             st.session_state.app_page = "GROUP_LIST"
             st.rerun()
 
@@ -615,19 +593,9 @@ def page_group_room():
 
     st.markdown("### 🔍 약속 조율 일정 대조 옵션")
     col_in1, col_in2, col_in3 = st.columns([2, 1, 2])
-    with col_in1:
-        date_range = st.date_input(
-            "조율할 시작일과 종료일",
-            value=(datetime(now.year, now.month, 1), datetime(now.year, now.month, last_day)),
-            key="match_date_range"
-        )
-    with col_in2:
-        min_h = st.number_input("최소 약속 시간 (시간)", min_value=1, max_value=24, value=2, key="match_min_h")
-    with col_in3:
-        preferred_time = st.slider(
-            "🕒 희망 시간 범위 선택",
-            min_value=0, max_value=24, value=(10, 20), step=1, key="match_pref_time"
-        )
+    with col_in1: date_range = st.date_input("조율할 시작일과 종료일", value=(datetime(now.year, now.month, 1), datetime(now.year, now.month, last_day)), key="match_date_range")
+    with col_in2: min_h = st.number_input("최소 약속 시간 (시간)", min_value=1, max_value=24, value=2, key="match_min_h")
+    with col_in3: preferred_time = st.slider("🕒 희망 시간 범위 선택", min_value=0, max_value=24, value=(10, 20), step=1, key="match_pref_time")
 
     if st.button("일정 대조하기 🚀", type="primary", use_container_width=True):
         st.session_state.run_match = True
@@ -643,49 +611,38 @@ def page_group_room():
         start_date_picked = datetime(now.year, now.month, 1).date()
         end_date_picked = datetime(now.year, now.month, last_day).date()
 
-    date_colors = {}
-    free_slots_cache = {}
+    date_colors, free_slots_cache = {}, {}
 
     for d in range(1, last_day + 1):
         curr_loop_date = datetime(now.year, now.month, d).date()
-        if curr_loop_date < start_date_picked or curr_loop_date > end_date_picked:
-            continue
+        if curr_loop_date < start_date_picked or curr_loop_date > end_date_picked: continue
 
         w_str = ["월", "화", "수", "목", "금", "토", "일"][curr_loop_date.weekday()]
-        
         slots = [False] * 24
         p_start, p_end = preferred_time
-        for h in range(p_start, p_end):
-            slots[h] = True
+        for h in range(p_start, p_end): slots[h] = True
 
         for name, m_data in g_info["members"].items():
             for t in m_data.get("timetable", []):
                 if t["day"] == w_str:
                     try:
-                        sh = int(t["start"].split(":")[0])
-                        eh = int(t["end"].split(":")[0])
-                        for h in range(sh, eh):
-                            slots[h] = False
-                    except Exception:
-                        pass
+                        sh, eh = int(t["start"].split(":")[0]), int(t["end"].split(":")[0])
+                        for h in range(sh, eh): slots[h] = False
+                    except Exception: pass
             for ev in m_data.get("events", []):
                 d_str = f"{now.year}-{now.month:02d}-{d:02d}"
                 if ev["start"].split()[0] <= d_str <= ev["end"].split()[0]:
                     try:
-                        sh = int(ev["start"].split()[1].split(":")[0])
-                        eh = int(ev["end"].split()[1].split(":")[0])
-                        for h in range(sh, eh):
-                            slots[h] = False
-                    except Exception:
-                        pass
+                        sh, eh = int(ev["start"].split()[1].split(":")[0]), int(ev["end"].split()[1].split(":")[0])
+                        for h in range(sh, eh): slots[h] = False
+                    except Exception: pass
 
         max_c, curr_c = 0, 0
         for s in slots:
             if s:
                 curr_c += 1
                 max_c = max(max_c, curr_c)
-            else:
-                curr_c = 0
+            else: curr_c = 0
 
         if max_c >= min_h:
             date_colors[d] = "green"
@@ -698,8 +655,8 @@ def page_group_room():
     st.session_state.cached_colors = date_colors
 
     colors = st.session_state.get("cached_colors", {})
-    
     cal_matrix = calendar.Calendar(firstweekday=6).monthdayscalendar(now.year, now.month)
+    
     cols = st.columns(7)
     for i, d in enumerate(["일", "월", "화", "수", "목", "금", "토"]):
         cols[i].markdown(f"<center><b>{d}</b></center>", unsafe_allow_html=True)
@@ -709,32 +666,24 @@ def page_group_room():
         for idx, d_num in enumerate(week):
             if d_num != 0:
                 bg = "white"
-                if d_num in colors:
-                    bg = "#C8E6C9" if colors[d_num] == "green" else "#FFCDD2"
-                
-                cols[idx].markdown(
-                    f"<div style='background-color:{bg}; text-align:center; "
-                    f"padding:8px; border-radius:5px; border:1px solid #ddd; "
-                    f"font-weight:bold; color:black; margin-bottom:2px;'>{d_num}</div>",
-                    unsafe_allow_html=True
-                )
-                
+                if d_num in colors: bg = "#C8E6C9" if colors[d_num] == "green" else "#FFCDD2"
+                cols[idx].markdown(f"<div style='background-color:{bg}; text-align:center; padding:8px; border-radius:5px; border:1px solid #ddd; font-weight:bold; color:black; margin-bottom:2px;'>{d_num}</div>", unsafe_allow_html=True)
                 if cols[idx].button("선택", key=f"g_day_{d_num}", use_container_width=True):
                     st.session_state.active_room_day = d_num
                     st.rerun()
-            else:
-                cols[idx].write("")
+            else: cols[idx].write("")
 
     st.markdown("---")
     st.subheader("📊 일주일 시간표 뷰 (공통 빈 시간대)")
     w_days_list = ["월", "화", "수", "목", "금", "토", "일"]
 
+    # 24열 표 모바일 밀림 방지 오버플로우 박스 씌우기
     w_table = (
-        "<table style='width:100%; text-align:center; font-size:11px; border-collapse:collapse;'>"
+        "<div style='overflow-x: auto; -webkit-overflow-scrolling: touch;'>"
+        "<table style='width:100%; min-width:700px; text-align:center; font-size:11px; border-collapse:collapse;'>"
         "<tr style='background-color:#F5F5F5; color:black;'><th>요일/시간</th>"
     )
-    for h in range(24):
-        w_table += f"<th>{h:02d}</th>"
+    for h in range(24): w_table += f"<th>{h:02d}</th>"
     w_table += "</tr>"
 
     for w_day in w_days_list:
@@ -747,19 +696,14 @@ def page_group_room():
                     for t in m_data.get("timetable", []):
                         if t["day"] == w_day:
                             try:
-                                sh = int(t["start"].split(":")[0])
-                                eh = int(t["end"].split(":")[0])
-                                if sh <= h < eh:
-                                    is_free = False
-                            except Exception:
-                                pass
-            else:
-                is_free = False
-                
+                                sh, eh = int(t["start"].split(":")[0]), int(t["end"].split(":")[0])
+                                if sh <= h < eh: is_free = False
+                            except Exception: pass
+            else: is_free = False
             bg = "#4CAF50" if is_free else "#F44336"
             w_table += f"<td style='background-color:{bg}; border:1px solid #ddd; width:25px;'></td>"
         w_table += "</tr>"
-    w_table += "</table>"
+    w_table += "</table></div>"
     st.markdown(w_table, unsafe_allow_html=True)
 
     if "active_room_day" in st.session_state:
@@ -769,9 +713,11 @@ def page_group_room():
 
         slots = st.session_state.get("cached_slots", {}).get(sel_d, [False] * 24)
 
+        # 분석 막대 모바일 최소 가로길이 보장 및 가로스크롤 제공
         bar_html = """
-<div style='width:100%; font-size:11px;'>
-  <div style='display:flex; width:100%; height:40px; border:1px solid #aaa; margin-bottom:4px; box-sizing:border-box;'>
+<div style='overflow-x: auto; -webkit-overflow-scrolling: touch;'>
+  <div style='width:100%; min-width:600px; font-size:11px; padding-bottom:5px;'>
+    <div style='display:flex; width:100%; height:40px; border:1px solid #aaa; margin-bottom:4px; box-sizing:border-box;'>
 """
         for s in slots:
             bg = "#4CAF50" if s else "#F44336"
@@ -781,11 +727,8 @@ def page_group_room():
         bar_html += "  <div style='display:flex; width:100%; box-sizing:border-box;'>\n"
         for h in range(24):
             label = str(h) if h % 3 == 0 else ""
-            bar_html += (
-                f"<div style='flex:1; text-align:center; color:#555; "
-                f"border-left:1px solid #ccc; line-height:1;'>{label}</div>\n"
-            )
-        bar_html += "  </div>\n</div>"
+            bar_html += f"<div style='flex:1; text-align:center; color:#555; border-left:1px solid #ccc; line-height:1;'>{label}</div>\n"
+        bar_html += "  </div>\n</div></div>"
 
         st.markdown(bar_html, unsafe_allow_html=True)
 
@@ -798,20 +741,15 @@ def page_group_room():
                     st.balloons()
                     st.success(f"🎉 약속 확정! [{sel_d}일 {h}:00]")
         else:
-            st.error("해당 날짜에는 공통 가용 시간이 없습니다. (설정하신 희망 시간 범위를 확인해보세요)")
+            st.error("해당 날짜에는 공통 가용 시간이 없습니다.")
 
 # ════════════════════════════════════════════════
 # 라우터
 # ════════════════════════════════════════════════
 page = st.session_state.app_page
 
-if page == "HOME":
-    page_home()
-elif page == "MY_CALENDAR":
-    page_my_calendar()
-elif page == "FIXED_TIMETABLE":
-    page_fixed_timetable()
-elif page == "GROUP_LIST":
-    page_group_list()
-elif page == "GROUP_ROOM":
-    page_group_room()
+if page == "HOME": page_home()
+elif page == "MY_CALENDAR": page_my_calendar()
+elif page == "FIXED_TIMETABLE": page_fixed_timetable()
+elif page == "GROUP_LIST": page_group_list()
+elif page == "GROUP_ROOM": page_group_room()
