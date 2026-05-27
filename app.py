@@ -202,6 +202,43 @@ with st.sidebar:
             st.session_state.app_page = "HOME"
             st.rerun()
 
+        st.markdown("---")
+        with st.expander("⚠️ 회원 탈퇴"):
+            st.warning("탈퇴 시 모든 일정과 그룹 정보가 **영구 삭제**됩니다.")
+            del_pw = st.text_input("비밀번호 확인", type="password", key="del_pw").strip()
+            if st.button("회원 탈퇴 확인 🗑️", type="primary", use_container_width=True):
+                if not del_pw:
+                    st.error("비밀번호를 입력해주세요.")
+                else:
+                    uid = st.session_state.user_id
+                    res = supabase.table("users").select("*").eq("user_id", uid).execute()
+                    if not res.data or res.data[0]["password_hash"] != hash_password(del_pw):
+                        st.error("비밀번호가 틀렸습니다.")
+                    else:
+                        # 참여 중인 그룹에서 멤버 제거
+                        rooms = load_global_rooms()
+                        nick = st.session_state.my_nickname
+                        for code, info in rooms.items():
+                            if nick and nick in info["members"]:
+                                del info["members"][nick]
+                                if not info["members"]:
+                                    delete_room(code)
+                                else:
+                                    save_room(code, info["name"], info["members"])
+                        # DB에서 계정 삭제
+                        supabase.table("personal_data").delete().eq("user_id", uid).execute()
+                        supabase.table("users").delete().eq("user_id", uid).execute()
+                        # 세션 초기화
+                        st.session_state.user_id = ""
+                        st.session_state.my_events = []
+                        st.session_state.my_timetable = []
+                        st.session_state.my_joined_rooms = {}
+                        st.session_state.my_nickname = ""
+                        st.session_state.current_group_code = None
+                        st.session_state.app_page = "HOME"
+                        st.success("탈퇴가 완료되었습니다.")
+                        st.rerun()
+
 
 # ════════════════════════════════════════════════
 # 1. 홈 화면 (반응형 HTML 달력 적용)
