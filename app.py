@@ -446,7 +446,7 @@ def page_home():
 
 
 # ════════════════════════════════════════════════
-# 나의 일정 (모바일 자동 조절형 일반 달력 형식)
+# 나의 일정 (일반 달력 형식 + 일정 바 클릭 모달 링크)
 # ════════════════════════════════════════════════
 def page_my_calendar():
     h1, h2 = st.columns([5, 1])
@@ -481,10 +481,9 @@ def page_my_calendar():
 
     st.markdown("---")
 
-    # ── [일반 달력 Grid 방식 구현] HTML+CSS 모바일 찌그러짐 방지 ──────────────────────────────
+    # ── [일반 달력 Grid 디자인 구현] ──────────────────────────────
     cal_matrix = calendar.monthcalendar(st.session_state.view_year, st.session_state.view_month)
     
-    # CSS 설정: 단어가 쪼개지거나 버튼이 밀리는 현상을 막기 위한 유연한 모바일 그리드
     cal_html = """
     <style>
         .calendar-grid {
@@ -506,7 +505,7 @@ def page_my_calendar():
             border: 1px solid #e0e0e0;
             border-radius: 6px;
             padding: 4px 2px;
-            min-height: 85px;
+            min-height: 95px;
             display: flex;
             flex-direction: column;
             justify-content: flex-start;
@@ -518,7 +517,7 @@ def page_my_calendar():
             font-size: 13px;
             margin-bottom: 3px;
         }
-        .event-chip {
+        .event-chip-html {
             width: 94%;
             font-size: 9px;
             padding: 2px 3px;
@@ -530,6 +529,7 @@ def page_my_calendar():
             overflow: hidden;
             text-overflow: ellipsis;
             line-height: 1.2;
+            font-weight: 500;
         }
         .empty-day {
             background-color: #fafafa;
@@ -539,30 +539,26 @@ def page_my_calendar():
     <div class='calendar-grid'>
     """
     
-    # 요일 헤더 표시
     day_headers = ["일", "월", "화", "수", "목", "금", "토"]
     for i, d in enumerate(day_headers):
         color = "#FF4B4B" if i == 0 else ("#1C83E1" if i == 6 else "#333333")
         cal_html += f"<div class='calendar-header' style='color:{color};'>{d}</div>"
 
-    # 달력 날짜 채우기
+    # 달력 날짜 렌더링을 루프 돌며 그리기
     for week in cal_matrix:
         for i, day_num in enumerate(week):
             if day_num != 0:
                 date_str = f"{st.session_state.view_year}-{st.session_state.view_month:02d}-{day_num:02d}"
                 
-                # 해당 일에 걸치는 일정 검색
                 day_events = [
                     ev for ev in st.session_state.my_events
                     if ev["start"].split()[0] <= date_str <= ev["end"].split()[0]
                 ]
                 
-                # 요일별 색상 구분
                 if i == 0: day_color = "#FF4B4B"
                 elif i == 6: day_color = "#1C83E1"
                 else: day_color = "#33333F"
                 
-                # 오늘 날짜 하이라이트 배경
                 is_today = (st.session_state.view_year == datetime.now().year and 
                             st.session_state.view_month == datetime.now().month and 
                             day_num == datetime.now().day)
@@ -571,10 +567,10 @@ def page_my_calendar():
                 cal_html += f"<div class='calendar-day-box' style='{box_bg}'>"
                 cal_html += f"<div class='day-number' style='color:{day_color};'>{day_num}</div>"
                 
-                # 일정 최대 3개까지만 도트/칩 형태로 노출 (모바일 폭 터짐 방지)
+                # HTML 내부는 깔끔한 배경칩 디자인만 담당
                 for ev in day_events[:3]:
                     color = ev.get("color", "#4D96FF")
-                    cal_html += f"<div class='event-chip' style='background-color:{color}33; border-left:2px solid {color};' title='{ev['title']}'>📌{ev['title']}</div>"
+                    cal_html += f"<div class='event-chip-html' style='background-color:{color}33; border-left:2px solid {color};'>📌 {ev['title']}</div>"
                 if len(day_events) > 3:
                     cal_html += f"<div style='font-size:8px; color:gray;'>+{len(day_events)-3}개</div>"
                     
@@ -586,12 +582,100 @@ def page_my_calendar():
     st.markdown(cal_html, unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── [하단 액션 영역] 콤보박스로 날짜 선택하여 추가/수정/삭제 ──────────────────────────────
-    st.markdown("### 🛠️ 일정 추가 및 편집")
+
+    # ── [⚡핵심 기능] 달력 아래에 클릭할 수 있는 스마트 인터랙션 링크 배치 ──────────────────────────────
+    st.markdown("#### 👇 등록된 일정을 누르면 수정/삭제 창이 열립니다")
     
-    tab_add, tab_edit = st.tabs(["➕ 새 일정 등록", "🔧 기존 일정 수정/삭제"])
-    
-    with tab_add:
+    # 이번 달 전체 일정을 보기 편하게 날짜순 정리해서 클릭 바 형태로 노출
+    active_month_events = []
+    for ev in st.session_state.my_events:
+        if f"{st.session_state.view_year}-{st.session_state.view_month:02d}" in ev["start"]:
+            active_month_events.append(ev)
+            
+    active_month_events.sort(key=lambda x: x["start"])
+
+    if not active_month_events:
+        st.caption("이번 달에 등록된 일정이 없습니다.")
+    else:
+        # 유저가 직관적으로 누르고 싶게 만드는 일정 바 리스트 (가로 전체 채우기)
+        for ev in active_month_events:
+            ev_idx = st.session_state.my_events.index(ev)
+            s_day = ev["start"].split()[0].split("-")[2]
+            s_time = ev["start"].split()[1] if " " in ev["start"] else "00:00"
+            color = ev.get("color", "#4D96FF")
+            
+            # 버튼을 연출하여 클릭 시 바로 하단 모달/팝업이 연동되도록 유도
+            if st.button(
+                f"📅 {s_day}일 [{s_time}] 📌 {ev['title']}", 
+                key=f"ev_click_bar_{ev_idx}_{s_day}", 
+                use_container_width=True
+            ):
+                st.session_state.editing_event_idx = ev_idx
+                st.rerun()
+
+    # ── 팝업창(모달 오버레이) 형태의 수정 및 삭제 공간 ──────────────────────────────
+    selected_idx = st.session_state.editing_event_idx
+    if selected_idx is not None and 0 <= selected_idx < len(st.session_state.my_events):
+        ev = st.session_state.my_events[selected_idx]
+        
+        st.markdown("---")
+        # 경고창 레이아웃 박스로 팝업 느낌 극대화
+        st.info(f"🔎 **상세 정보 및 수정/삭제 대화창** : {ev['title']}")
+        
+        try:
+            s_d = datetime.strptime(ev["start"].split()[0], "%Y-%m-%d").date()
+            s_t = datetime.strptime(ev["start"].split()[1], "%H:%M").time()
+            e_d = datetime.strptime(ev["end"].split()[0], "%Y-%m-%d").date()
+            e_t = datetime.strptime(ev["end"].split()[1], "%H:%M").time()
+        except Exception:
+            s_d = e_d = datetime.now().date()
+            s_t = datetime.strptime("09:00", "%H:%M").time()
+            e_t = datetime.strptime("18:00", "%H:%M").time()
+
+        with st.form("modal_edit_form"):
+            new_title = st.text_input("일정 제목 변경", value=ev["title"])
+            col_pop1, col_pop2 = st.columns(2)
+            with col_pop1:
+                new_s_date = st.date_input("시작일", value=s_d)
+                new_s_time = st.time_input("시작시간", value=s_t)
+            with col_pop2:
+                new_e_date = st.date_input("종료일", value=e_d)
+                new_e_time = st.time_input("종료시간", value=e_t)
+            
+            c_save, c_del, c_close = st.columns(3)
+            saved = c_save.form_submit_button("💾 수정 저장", type="primary", use_container_width=True)
+            deleted = c_del.form_submit_button("🗑️ 일정 삭제", use_container_width=True)
+            closed = c_close.form_submit_button("✖ 팝업 닫기", use_container_width=True)
+
+        if saved:
+            updated = {
+                "id": ev.get("id"),
+                "title": new_title,
+                "start": f"{new_s_date} {new_s_time.strftime('%H:%M')}",
+                "end": f"{new_e_date} {new_e_time.strftime('%H:%M')}",
+                "color": ev.get("color", get_random_color()),
+            }
+            db_save_event(st.session_state.user_id, updated)
+            st.session_state.my_events[selected_idx] = updated
+            st.session_state.editing_event_idx = None
+            st.success("변경 사항이 저장되었습니다.")
+            st.rerun()
+            
+        elif deleted:
+            if ev.get("id"):
+                db_delete_event(ev["id"])
+            st.session_state.my_events.pop(selected_idx)
+            st.session_state.editing_event_idx = None
+            st.success("일정이 삭제되었습니다.")
+            st.rerun()
+            
+        elif closed:
+            st.session_state.editing_event_idx = None
+            st.rerun()
+
+    # ── [새 일정 등록 공간] ──────────────────────────────
+    st.markdown("---")
+    with st.expander("➕ 새 일정 추가하기", expanded=False):
         with st.form("event_add_form_normal"):
             ev_title = st.text_input("일정 제목")
             col_ad1, col_ad2 = st.columns(2)
@@ -615,61 +699,6 @@ def page_my_calendar():
                     db_save_event(st.session_state.user_id, new_ev)
                     st.session_state.data_loaded = False
                     load_user_data()
-                    st.success("새 일정이 등록되었습니다!")
-                    st.rerun()
-
-    with tab_edit:
-        if not st.session_state.my_events:
-            st.caption("등록된 일정이 없습니다.")
-        else:
-            event_options = [f"{ev['start'].split()[0]} | {ev['title']}" for ev in st.session_state.my_events]
-            selected_option = st.selectbox("수정할 일정 선택", options=event_options)
-            
-            if selected_option:
-                ev_idx = event_options.index(selected_option)
-                ev = st.session_state.my_events[ev_idx]
-                
-                try:
-                    s_d = datetime.strptime(ev["start"].split()[0], "%Y-%m-%d").date()
-                    s_t = datetime.strptime(ev["start"].split()[1], "%H:%M").time()
-                    e_d = datetime.strptime(ev["end"].split()[0], "%Y-%m-%d").date()
-                    e_t = datetime.strptime(ev["end"].split()[1], "%H:%M").time()
-                except Exception:
-                    s_d = e_d = datetime.now().date()
-                    s_t = datetime.strptime("09:00", "%H:%M").time()
-                    e_t = datetime.strptime("18:00", "%H:%M").time()
-
-                with st.form("edit_event_form_normal"):
-                    new_title = st.text_input("일정 제목", value=ev["title"])
-                    col_ed1, col_ed2 = st.columns(2)
-                    with col_ed1:
-                        new_s_date = st.date_input("시작 날짜", value=s_d)
-                        new_s_time = st.time_input("시작 시간", value=s_t)
-                    with col_ed2:
-                        new_e_date = st.date_input("종료 날짜", value=e_d)
-                        new_e_time = st.time_input("종료 시간", value=e_t)
-                    
-                    c_save, c_del = st.columns(2)
-                    saved = c_save.form_submit_button("💾 수정 저장", use_container_width=True)
-                    deleted = c_del.form_submit_button("🗑️ 일정 삭제", use_container_width=True)
-
-                if saved:
-                    updated = {
-                        "id": ev.get("id"),
-                        "title": new_title,
-                        "start": f"{new_s_date} {new_s_time.strftime('%H:%M')}",
-                        "end": f"{new_e_date} {new_e_time.strftime('%H:%M')}",
-                        "color": ev.get("color", get_random_color()),
-                    }
-                    db_save_event(st.session_state.user_id, updated)
-                    st.session_state.my_events[ev_idx] = updated
-                    st.success("일정이 수정되었습니다!")
-                    st.rerun()
-                elif deleted:
-                    if ev.get("id"):
-                        db_delete_event(ev["id"])
-                    st.session_state.my_events.pop(ev_idx)
-                    st.success("일정이 삭제되었습니다!")
                     st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
