@@ -913,82 +913,6 @@ def page_group_room():
         unsafe_allow_html=True
     )
 
-    # ── 날짜 클릭 시 상세 패널 (캘린더 위에 표시) ──────────
-    selected = st.session_state.get("grp_selected_day")
-    if selected:
-        slots = st.session_state.grp_free_slots.get(selected, [False] * 24)
-        year_s, month_s, day_s = map(int, selected.split("-"))
-
-        with st.container():
-            st.markdown(
-                f"<div style='background-color:#E8F5E9; border:2px solid #388E3C; "
-                f"border-radius:10px; padding:16px; margin-bottom:16px;'>",
-                unsafe_allow_html=True
-            )
-            col_title, col_close = st.columns([5, 1])
-            with col_title:
-                st.subheader(f"📍 {year_s}년 {month_s}월 {day_s}일 시간대 분석")
-            with col_close:
-                if st.button("✖ 닫기", key="close_detail"):
-                    st.session_state.grp_selected_day = None
-                    st.rerun()
-
-            avail_hours = [h for h in range(t_start, t_end) if slots[h]]
-            if avail_hours:
-                st.success(f"✅ 가능한 시간: {', '.join(f'{h}:00~{h+1}:00' for h in avail_hours)}")
-            else:
-                st.error("이 날짜에는 모두가 가능한 시간대가 없습니다.")
-
-            # 막대 그래프
-            bar_html = "<div style='width:100%; font-size:11px; margin-top:12px;'>"
-            bar_html += "<div style='display:flex; width:100%; height:48px; border:1px solid #aaa; margin-bottom:4px; border-radius:6px; overflow:hidden;'>"
-            for h in range(t_start, t_end):
-                if h < len(slots):
-                    bg = "#4CAF50" if slots[h] else "#F44336"
-                    label = f"{h}" if (t_end - t_start) <= 14 else ""
-                    bar_html += (
-                        f"<div style='flex:1; background-color:{bg}; border-right:1px solid rgba(255,255,255,0.3); "
-                        f"display:flex; align-items:flex-end; justify-content:center; padding-bottom:2px; "
-                        f"color:white; font-size:9px; font-weight:bold;'>{label}</div>"
-                    )
-            bar_html += "</div>"
-            bar_html += "<div style='display:flex; width:100%;'>"
-            for h in range(t_start, t_end):
-                bar_html += f"<div style='flex:1; text-align:center; color:#555; font-size:10px;'>{h:02d}</div>"
-            bar_html += "</div></div>"
-            st.markdown(bar_html, unsafe_allow_html=True)
-            st.markdown(
-                "<div style='display:flex; gap:16px; font-size:12px; margin-top:8px;'>"
-                "<span>🟩 가능</span><span>🟥 불가</span></div>",
-                unsafe_allow_html=True
-            )
-
-            # 시간 확정 버튼
-            if avail_hours:
-                st.markdown("##### ⏰ 약속 시간 확정")
-                # 연속 구간으로 묶기
-                ranges = []
-                seg_start = avail_hours[0]
-                seg_end = avail_hours[0]
-                for h in avail_hours[1:]:
-                    if h == seg_end + 1:
-                        seg_end = h
-                    else:
-                        ranges.append((seg_start, seg_end + 1))
-                        seg_start = seg_end = h
-                ranges.append((seg_start, seg_end + 1))
-
-                st.caption("연속 가능 시간대:")
-                btn_cols = st.columns(min(len(ranges), 4))
-                for idx, (rs, re) in enumerate(ranges):
-                    if btn_cols[idx % 4].button(
-                        f"{rs:02d}:00 ~ {re:02d}:00", key=f"confirm_{selected}_{rs}", use_container_width=True
-                    ):
-                        st.balloons()
-                        st.success(f"🎉 약속 확정! {year_s}년 {month_s}월 {day_s}일 {rs:02d}:00 ~ {re:02d}:00")
-
-            st.markdown("</div>", unsafe_allow_html=True)
-
     # ── 결과 캘린더 렌더링 ─────────────────────────
     render_year, render_month = start_d.year, start_d.month
     end_year, end_month = end_d.year, end_d.month
@@ -1047,6 +971,83 @@ def page_group_room():
         if render_month > 12:
             render_month = 1
             render_year += 1
+
+    # ── 날짜 클릭 시 상세 패널 (캘린더 아래에 표시) ──────────
+    selected = st.session_state.get("grp_selected_day")
+    if selected:
+        slots = st.session_state.grp_free_slots.get(selected, [False] * 24)
+        year_s, month_s, day_s = map(int, selected.split("-"))
+
+        st.markdown("---")
+        col_title, col_close = st.columns([5, 1])
+        with col_title:
+            st.subheader(f"📍 {year_s}년 {month_s}월 {day_s}일 시간대 분석")
+        with col_close:
+            if st.button("✖ 닫기", key="close_detail"):
+                st.session_state.grp_selected_day = None
+                st.rerun()
+
+        avail_hours = [h for h in range(t_start, t_end) if slots[h]]
+        if avail_hours:
+            # ★ ~~ 패턴 방지: 콤마+공백으로 구분, unsafe_allow_html 사용
+            time_list_html = ", ".join(
+                f"<b>{h:02d}:00&#8209;{h+1:02d}:00</b>" for h in avail_hours
+            )
+            st.markdown(
+                f"<div style='background-color:#E8F5E9; border:1px solid #388E3C; border-radius:6px; "
+                f"padding:12px 16px; font-size:14px; color:#1B5E20;'>"
+                f"✅ 가능한 시간: {time_list_html}</div>",
+                unsafe_allow_html=True
+            )
+        else:
+            st.error("이 날짜에는 모두가 가능한 시간대가 없습니다.")
+
+        # 막대 그래프
+        bar_html = "<div style='width:100%; font-size:11px; margin-top:12px;'>"
+        bar_html += "<div style='display:flex; width:100%; height:48px; border:1px solid #aaa; margin-bottom:4px; border-radius:6px; overflow:hidden;'>"
+        for h in range(t_start, t_end):
+            if h < len(slots):
+                bg = "#4CAF50" if slots[h] else "#F44336"
+                label = f"{h}" if (t_end - t_start) <= 14 else ""
+                bar_html += (
+                    f"<div style='flex:1; background-color:{bg}; border-right:1px solid rgba(255,255,255,0.3); "
+                    f"display:flex; align-items:flex-end; justify-content:center; padding-bottom:2px; "
+                    f"color:white; font-size:9px; font-weight:bold;'>{label}</div>"
+                )
+        bar_html += "</div>"
+        bar_html += "<div style='display:flex; width:100%;'>"
+        for h in range(t_start, t_end):
+            bar_html += f"<div style='flex:1; text-align:center; color:#555; font-size:10px;'>{h:02d}</div>"
+        bar_html += "</div></div>"
+        st.markdown(bar_html, unsafe_allow_html=True)
+        st.markdown(
+            "<div style='display:flex; gap:16px; font-size:12px; margin-top:8px;'>"
+            "<span>🟩 가능</span><span>🟥 불가</span></div>",
+            unsafe_allow_html=True
+        )
+
+        # 시간 확정 버튼
+        if avail_hours:
+            st.markdown("##### ⏰ 약속 시간 확정")
+            ranges = []
+            seg_start = avail_hours[0]
+            seg_end = avail_hours[0]
+            for h in avail_hours[1:]:
+                if h == seg_end + 1:
+                    seg_end = h
+                else:
+                    ranges.append((seg_start, seg_end + 1))
+                    seg_start = seg_end = h
+            ranges.append((seg_start, seg_end + 1))
+
+            st.caption("연속 가능 시간대:")
+            btn_cols = st.columns(min(len(ranges), 4))
+            for idx, (rs, re) in enumerate(ranges):
+                if btn_cols[idx % 4].button(
+                    f"{rs:02d}:00 - {re:02d}:00", key=f"confirm_{selected}_{rs}", use_container_width=True
+                ):
+                    st.balloons()
+                    st.success(f"🎉 약속 확정! {year_s}년 {month_s}월 {day_s}일 {rs:02d}:00 - {re:02d}:00")
 
     # ── 공통 시간표 뷰 ─────────────────────────
     st.markdown("---")
