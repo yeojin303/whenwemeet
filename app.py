@@ -272,7 +272,7 @@ def require_login():
 
 
 # ════════════════════════════════════════════════
-# 공통 상단 헤더 (로그인 후 페이지용)
+# 공통 상단 헤더
 # ════════════════════════════════════════════════
 def render_header(title, back_page=None, back_label="← 홈으로"):
     c1, c2 = st.columns([5, 2])
@@ -446,50 +446,55 @@ def page_home():
 
 
 # ════════════════════════════════════════════════
-# 나의 일정 (아이폰 완전 구현 + 수정 팝업)
+# 나의 일정 (아이폰 스타일 캘린더 + 바 글씨 노출 개선)
 # ════════════════════════════════════════════════
 def page_my_calendar():
-    # ── 💡 무적의 CSS로 모바일 화면에서 안 깨지는 완전한 달력 구현 ─────────────────────
+    # ── 💡 텍스트가 바깥으로 안 숨겨지도록 CSS 속성 전면 개편 ──────────────────────────
     st.markdown("""
         <style>
-        div[data-testid="stColumns"] button { padding: 4px 6px !important; }
-        .calendar-grid-my { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; width: 100%; text-align: center; font-size: 11px; }
-        .day-box { background: white; border: 1px solid #e0e0e0; border-radius: 6px; padding: 3px 1px; min-height: 80px; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
-        .day-box:hover { background-color: #f8f9fa; }
-        .weekday-box { font-weight: bold; font-size: 12px; color: #333; }
-        .sun-box { font-weight: bold; font-size: 12px; color: #FF4B4B; }
-        .sat-box { font-weight: bold; font-size: 12px; color: #1C83E1; }
-        .empty-day { background-color: #fafafa; }
-        .event-dot-row { display: flex; gap: 2px; margin-top: 1px; }
-        .event-dot { width: 4px; height: 4px; border-radius: 50%; }
-        /* 스트림릿 버튼을 아이폰 캘린더 '바' 스타일로 무한 변신 */
+        /* 달력 기본 격자판 구조 배치 설정 */
+        div[data-testid="stColumns"] { gap: 2px !important; }
+        .sun-box { font-weight: bold; font-size: 13px; color: #FF4B4B; }
+        .sat-box { font-weight: bold; font-size: 13px; color: #1C83E1; }
+        .weekday-box { font-weight: bold; font-size: 13px; color: #333; }
+        
+        /* 캘린더 날짜 사각형 내부에 들어갈 일정 '바(Bar)' 버튼 완전 최적화 */
         div[data-testid="stColumn"] div.stButton > button {
-            color: #fff !important;
+            color: #FFFFFF !important;               /* 글씨 무조건 흰색 고정 */
+            font-color: #FFFFFF !important;
             border: none !important;
             border-radius: 4px !important;
-            padding: 2px 4px !important;
-            font-size: 10px !important;
-            font-weight: 500 !important;
-            margin-top: 1px !important;
-            margin-bottom: 0px !important;
-            margin-left: 0 !important;
-            margin-right: 0 !important;
-            width: 95% !important;
-            display: block !important;
+            padding: 3px 6px !important;            /* 글자가 잘리지 않도록 내부 여백 부여 */
+            font-size: 11px !important;             /* 가독성 좋은 글자 크기 */
+            font-weight: 600 !important;            /* 글자 두껍게 해서 선명하게 */
+            margin-top: 2px !important;
+            margin-bottom: 2px !important;
+            width: 100% !important;                  /* 칸 안 가득 차게 */
+            display: inline-block !important;
+            text-align: left !important;            /* 아이폰 순정처럼 왼쪽 정렬 */
+            white-space: nowrap !important;         /* 줄바꿈 금지 */
+            overflow: hidden !important;            /* 넘치는 글자 숨김 */
+            text-overflow: ellipsis !important;     /* 넘치면 ... 표시 */
+            height: 24px !important;                /* 바 두께 확보 */
             line-height: 1.2 !important;
-            height: auto !important;
-            white-space: nowrap !important;
-            overflow: hidden !important;
-            text-overflow: ellipsis !important;
-            box-shadow: 0 1px 1px rgba(0,0,0,0.1) !important;
-            text-align: left !important;
         }
-        /* 마우스 올렸을 때 더 세련된 불투명도 조절 */
-        div[data-testid="stColumn"] div.stButton > button:hover { opacity: 0.8; }
-        /* 추가 버튼은 은은하게 */
+        
+        /* 마우스 갖다대면 불투명해지는 하이라이트 효과 */
+        div[data-testid="stColumn"] div.stButton > button:hover {
+            opacity: 0.85 !important;
+            color: #FFFFFF !important;
+        }
+        
+        /* 일정 추가 전용 미니 얇은 '+' 버튼 스타일 */
         div[data-testid="stColumn"] div.stButton > button[key^="add_quick_"] {
-            color: #aaa !important; background-color: rgba(200,200,200,0.2) !important; border-radius: 3px !important;
-            padding: 0 !important; margin: 1px !important; font-size: 9px !important; text-align: center !important; height: 18px !important;
+            color: #888888 !important; 
+            background-color: rgba(230,230,230,0.5) !important; 
+            border-radius: 4px !important;
+            padding: 0px !important; 
+            margin-top: 4px !important; 
+            font-size: 11px !important; 
+            text-align: center !important; 
+            height: 20px !important;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -522,13 +527,13 @@ def page_my_calendar():
 
     cal_matrix = calendar.monthcalendar(st.session_state.view_year, st.session_state.view_month)
 
-    # 요일 헤더
+    # 요일 헤더 매핑
     cols = st.columns(7)
     for i, d in enumerate(["일", "월", "화", "수", "목", "금", "토"]):
         cls = "sun-box" if i == 0 else ("sat-box" if i == 6 else "weekday-box")
         cols[i].markdown(f"<div style='text-align:center; font-weight:bold; font-size:13px; margin-bottom:5px;' class='{cls}'>{d}</div>", unsafe_allow_html=True)
 
-    # 달력 바둑판 구현
+    # 달력 날짜 루프 돌며 바둑판 생성
     for week in cal_matrix:
         cols = st.columns(7)
         for idx, day_num in enumerate(week):
@@ -538,24 +543,29 @@ def page_my_calendar():
 
             with cols[idx]:
                 if day_num != 0:
-                    st.markdown(f"<div style='text-align:center; font-weight:bold; font-size:13px; padding-bottom:1px;' class='{cls}'>{day_num}</div>", unsafe_allow_html=True)
+                    # 날짜 숫자 표기 및 테두리 틀 생성
+                    st.markdown(f"<div style='text-align:center; font-weight:bold; font-size:13px; border-top:1px solid #e0e0e0; padding-top:4px;' class='{cls}'>{day_num}</div>", unsafe_allow_html=True)
                     
-                    # 💡 무적의 CSS 바(Bar) 형태 버튼 구현
+                    # 해당 날짜에 들어있는 일정들을 바(Bar) 모양 버튼으로 렌더링
                     for ev_i, ev in day_events[:3]:
                         color = ev.get("color", "#FF6B6B")
                         
+                        # 💡 핵심: 버튼 개별 고유 ID 검출해서 배경색 동적 주입 및 글자 흰색 강제 주입
                         st.markdown(f"""
                             <style>
                             div[data-testid="stColumn"] div.stButton > button[key="bar_click_{date_str}_{ev_i}"] {{
                                 background-color: {color} !important;
+                                color: #FFFFFF !important;
                             }}
                             </style>
                         """, unsafe_allow_html=True)
                         
+                        # 버튼 내부에 글자가 바로 투명하게 뚫리거나 숨지 않고 가득 보이게 강제 바인딩
                         if st.button(ev["title"], key=f"bar_click_{date_str}_{ev_i}", use_container_width=True):
                             st.session_state.editing_event_idx = ev_i
                             st.rerun()
 
+                    # 일정 추가를 위한 미니 단축 버튼
                     if st.button("+", key=f"add_quick_{date_str}", use_container_width=True):
                         st.session_state.active_add_day = day_num
                         st.session_state.editing_event_idx = None
@@ -563,12 +573,12 @@ def page_my_calendar():
                 else:
                     st.write("")
 
-    # ── ⚡ 팝업 모달창 (날짜 안의 바를 눌렀을 때만 발동) ──────────────────────────────────
+    # ── ⚡ 일정 바 클릭 시 나타나는 하단 정밀 수정/세부사항 폼 ────────────────────────────
     selected_ev_idx = st.session_state.editing_event_idx
     if selected_ev_idx is not None and 0 <= selected_ev_idx < len(st.session_state.my_events):
         ev = st.session_state.my_events[selected_ev_idx]
         st.markdown("---")
-        st.subheader("📋 일정 수정 및 삭제")
+        st.subheader("📋 일정 세부사항 및 수정")
         
         try:
             s_d = datetime.strptime(ev["start"].split()[0], "%Y-%m-%d").date()
@@ -580,9 +590,9 @@ def page_my_calendar():
             s_t = datetime.strptime("09:00", "%H:%M").time()
             e_t = datetime.strptime("18:00", "%H:%M").time()
 
-        st.info(f"선택한 일정: **{ev['title']}** ({ev['start']} → {ev['end']})")
+        st.info(f"현재 선택된 일정: **{ev['title']}** ({ev['start']} ~ {ev['end']})")
         with st.form("edit_event_modal_form"):
-            new_title = st.text_input("일정 제목", value=ev["title"])
+            new_title = st.text_input("일정 제목 수정", value=ev["title"])
             col1, col2 = st.columns(2)
             with col1:
                 new_s_date = st.date_input("시작 날짜", value=s_d)
@@ -591,11 +601,10 @@ def page_my_calendar():
                 new_e_date = st.date_input("종료 날짜", value=e_d)
                 new_e_time = st.time_input("종료 시간", value=e_t)
             
-            # 저장 / 삭제 / 취소 버튼 나열
             bs, bd, bc = st.columns(3)
             save_btn = bs.form_submit_button("💾 저장하기", type="primary", use_container_width=True)
             delete_btn = bd.form_submit_button("🗑️ 삭제하기", use_container_width=True)
-            cancel_btn = bc.form_submit_button("✖ 팝업 닫기", use_container_width=True)
+            cancel_btn = bc.form_submit_button("✖ 닫기", use_container_width=True)
 
         if save_btn:
             updated = {
@@ -608,20 +617,20 @@ def page_my_calendar():
             db_save_event(st.session_state.user_id, updated)
             st.session_state.my_events[selected_ev_idx] = updated
             st.session_state.editing_event_idx = None
-            st.success("일정이 수정되었습니다!")
+            st.success("수정 사항이 안전하게 반영되었습니다!")
             st.rerun()
         elif delete_btn:
             if ev.get("id"):
                 db_delete_event(ev["id"])
             st.session_state.my_events.pop(selected_ev_idx)
             st.session_state.editing_event_idx = None
-            st.success("일정이 삭제되었습니다.")
+            st.success("일정이 정상적으로 삭제되었습니다.")
             st.rerun()
         elif cancel_btn:
             st.session_state.editing_event_idx = None
             st.rerun()
 
-    # ── 추가 폼 (날짜 안의 '+' 버튼 눌렀을 때 발동) ───────────────────────────────────
+    # ── 날짜별 + 클릭 시 나타나는 추가 폼 ───────────────────────────────────
     active_day = st.session_state.active_add_day
     if active_day:
         st.markdown("---")
