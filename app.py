@@ -272,7 +272,7 @@ def require_login():
 
 
 # ════════════════════════════════════════════════
-# 공통 상단 헤더 (로그인 후 페이지용)
+# 공통 상단 헤더
 # ════════════════════════════════════════════════
 def render_header(title, back_page=None, back_label="← 홈으로"):
     c1, c2 = st.columns([5, 2])
@@ -446,7 +446,7 @@ def page_home():
 
 
 # ════════════════════════════════════════════════
-# 나의 일정 (일반 달력 형식 + 일정 바 클릭 모달 링크)
+# 나의 일정 (💡일정 바 클릭 시 수정/삭제 팝업 연동)
 # ════════════════════════════════════════════════
 def page_my_calendar():
     h1, h2 = st.columns([5, 1])
@@ -481,146 +481,93 @@ def page_my_calendar():
 
     st.markdown("---")
 
-    # ── [일반 달력 Grid 디자인 구현] ──────────────────────────────
+    # 버튼 컴포넌트 여백 디자인 전용 패치 CSS 코드Inject
+    st.markdown("""
+        <style>
+            div[data-testid="stColumn"] { padding: 1px !important; }
+            .stButton > button {
+                padding: 2px 4px !important;
+                font-size: 11px !important;
+                min-height: 20px !important;
+                height: 22px !important;
+                line-height: 1.2 !important;
+                margin: 1px 0px !important;
+                border-radius: 4px !important;
+                text-align: left !important;
+                justify-content: flex-start !important;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # ── [고급 인터랙티브 달력 그리드] ──────────────────────────────
     cal_matrix = calendar.monthcalendar(st.session_state.view_year, st.session_state.view_month)
     
-    cal_html = """
-    <style>
-        .calendar-grid {
-            display: grid;
-            grid-template-columns: repeat(7, 1fr);
-            gap: 4px;
-            text-align: center;
-            width: 100%;
-        }
-        .calendar-header {
-            font-weight: bold;
-            font-size: 12px;
-            padding: 6px 0;
-            background-color: #f7f7f7;
-            border-radius: 4px;
-        }
-        .calendar-day-box {
-            background-color: #ffffff;
-            border: 1px solid #e0e0e0;
-            border-radius: 6px;
-            padding: 4px 2px;
-            min-height: 95px;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-            align-items: center;
-            overflow: hidden;
-        }
-        .day-number {
-            font-weight: bold;
-            font-size: 13px;
-            margin-bottom: 3px;
-        }
-        .event-chip-html {
-            width: 94%;
-            font-size: 9px;
-            padding: 2px 3px;
-            margin: 1px 0;
-            border-radius: 3px;
-            color: #222;
-            text-align: left;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            line-height: 1.2;
-            font-weight: 500;
-        }
-        .empty-day {
-            background-color: #fafafa;
-            border: 1px solid #f0f0f0;
-        }
-    </style>
-    <div class='calendar-grid'>
-    """
-    
+    # 7열 헤더 배치
+    cols_header = st.columns(7)
     day_headers = ["일", "월", "화", "수", "목", "금", "토"]
-    for i, d in enumerate(day_headers):
-        color = "#FF4B4B" if i == 0 else ("#1C83E1" if i == 6 else "#333333")
-        cal_html += f"<div class='calendar-header' style='color:{color};'>{d}</div>"
+    for idx, d_name in enumerate(day_headers):
+        color = "#FF4B4B" if idx == 0 else ("#1C83E1" if idx == 6 else "#333333")
+        cols_header[idx].markdown(f"<div style='text-align:center; font-weight:bold; font-size:13px; color:{color}; padding:5px 0; background-color:#f8f9fa; border-radius:4px;'>{d_name}</div>", unsafe_allow_html=True)
 
-    # 달력 날짜 렌더링을 루프 돌며 그리기
+    # 주차별 루프를 돌리며 날짜 그리기
     for week in cal_matrix:
-        for i, day_num in enumerate(week):
-            if day_num != 0:
-                date_str = f"{st.session_state.view_year}-{st.session_state.view_month:02d}-{day_num:02d}"
-                
-                day_events = [
-                    ev for ev in st.session_state.my_events
-                    if ev["start"].split()[0] <= date_str <= ev["end"].split()[0]
-                ]
-                
-                if i == 0: day_color = "#FF4B4B"
-                elif i == 6: day_color = "#1C83E1"
-                else: day_color = "#33333F"
-                
-                is_today = (st.session_state.view_year == datetime.now().year and 
-                            st.session_state.view_month == datetime.now().month and 
-                            day_num == datetime.now().day)
-                box_bg = "background-color:#E3F2FD; border:1px solid #2196F3;" if is_today else ""
-                
-                cal_html += f"<div class='calendar-day-box' style='{box_bg}'>"
-                cal_html += f"<div class='day-number' style='color:{day_color};'>{day_num}</div>"
-                
-                # HTML 내부는 깔끔한 배경칩 디자인만 담당
-                for ev in day_events[:3]:
-                    color = ev.get("color", "#4D96FF")
-                    cal_html += f"<div class='event-chip-html' style='background-color:{color}33; border-left:2px solid {color};'>📌 {ev['title']}</div>"
-                if len(day_events) > 3:
-                    cal_html += f"<div style='font-size:8px; color:gray;'>+{len(day_events)-3}개</div>"
+        cols_day = st.columns(7)
+        for idx, day_num in enumerate(week):
+            with cols_day[idx]:
+                if day_num != 0:
+                    date_str = f"{st.session_state.view_year}-{st.session_state.view_month:02d}-{day_num:02d}"
                     
-                cal_html += "</div>"
-            else:
-                cal_html += "<div class='calendar-day-box empty-day'></div>"
-                
-    cal_html += "</div>"
-    st.markdown(cal_html, unsafe_allow_html=True)
+                    # 오늘 날짜 강조 스타일
+                    is_today = (st.session_state.view_year == datetime.now().year and 
+                                st.session_state.view_month == datetime.now().month and 
+                                day_num == datetime.now().day)
+                    
+                    day_color = "#FF4B4B" if idx == 0 else ("#1C83E1" if idx == 6 else "#33333F")
+                    bg_style = "background-color:#E3F2FD; border:1px solid #2196F3; font-weight:bold;" if is_today else "background-color:#ffffff; border:1px solid #e0e0e0;"
+                    
+                    # 상단 날짜 숫자 표시
+                    st.markdown(f"""
+                        <div style="{bg_style} text-align:center; border-radius:6px 6px 0 0; font-size:12px; color:{day_color}; padding:2px 0;">
+                            {day_num}
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # 해당 날짜에 들어있는 일정 추출
+                    day_events = [
+                        ev for ev in st.session_state.my_events
+                        if ev["start"].split()[0] <= date_str <= ev["end"].split()[0]
+                    ]
+                    
+                    # 💡 핵심: 날짜 카드 내부에 클릭 가능한 버튼(일정 바) 배치하기
+                    # 박스 레이아웃을 무너뜨리지 않기 위해 최대 3개까지만 채우기
+                    for ev in day_events[:3]:
+                        ev_idx = st.session_state.my_events.index(ev)
+                        # 일정 구분을 위한 고유 Key 지정
+                        if st.button(f"📌 {ev['title']}", key=f"bar_{date_str}_{ev_idx}", use_container_width=True):
+                            st.session_state.editing_event_idx = ev_idx
+                            st.rerun()
+                            
+                    if len(day_events) > 3:
+                        st.markdown(f"<div style='font-size:9px; text-align:center; color:#777;'>+{len(day_events)-3}개 더보기</div>", unsafe_allow_html=True)
+                        
+                    # 바닥 마감 패딩 공간 확보
+                    st.markdown("<div style='height:15px;'></div>", unsafe_allow_html=True)
+                else:
+                    # 빈 날짜 채우기
+                    st.markdown("<div style='background-color:#fafafa; border:1px solid #f0f0f0; border-radius:6px; min-height:80px;'></div>", unsafe_allow_html=True)
+
     st.markdown("<br>", unsafe_allow_html=True)
 
-
-    # ── [⚡핵심 기능] 달력 아래에 클릭할 수 있는 스마트 인터랙션 링크 배치 ──────────────────────────────
-    st.markdown("#### 👇 등록된 일정을 누르면 수정/삭제 창이 열립니다")
-    
-    # 이번 달 전체 일정을 보기 편하게 날짜순 정리해서 클릭 바 형태로 노출
-    active_month_events = []
-    for ev in st.session_state.my_events:
-        if f"{st.session_state.view_year}-{st.session_state.view_month:02d}" in ev["start"]:
-            active_month_events.append(ev)
-            
-    active_month_events.sort(key=lambda x: x["start"])
-
-    if not active_month_events:
-        st.caption("이번 달에 등록된 일정이 없습니다.")
-    else:
-        # 유저가 직관적으로 누르고 싶게 만드는 일정 바 리스트 (가로 전체 채우기)
-        for ev in active_month_events:
-            ev_idx = st.session_state.my_events.index(ev)
-            s_day = ev["start"].split()[0].split("-")[2]
-            s_time = ev["start"].split()[1] if " " in ev["start"] else "00:00"
-            color = ev.get("color", "#4D96FF")
-            
-            # 버튼을 연출하여 클릭 시 바로 하단 모달/팝업이 연동되도록 유도
-            if st.button(
-                f"📅 {s_day}일 [{s_time}] 📌 {ev['title']}", 
-                key=f"ev_click_bar_{ev_idx}_{s_day}", 
-                use_container_width=True
-            ):
-                st.session_state.editing_event_idx = ev_idx
-                st.rerun()
-
-    # ── 팝업창(모달 오버레이) 형태의 수정 및 삭제 공간 ──────────────────────────────
+    # ── 💡 팝업 모달창 (달력 안의 일정 바를 눌렀을 때만 발동) ──────────────────────────────
     selected_idx = st.session_state.editing_event_idx
     if selected_idx is not None and 0 <= selected_idx < len(st.session_state.my_events):
         ev = st.session_state.my_events[selected_idx]
         
         st.markdown("---")
-        # 경고창 레이아웃 박스로 팝업 느낌 극대화
-        st.info(f"🔎 **상세 정보 및 수정/삭제 대화창** : {ev['title']}")
+        st.info(f"🔎 **선택한 일정 수정 및 삭제 창** : {ev['title']}")
         
         try:
             s_d = datetime.strptime(ev["start"].split()[0], "%Y-%m-%d").date()
@@ -632,7 +579,7 @@ def page_my_calendar():
             s_t = datetime.strptime("09:00", "%H:%M").time()
             e_t = datetime.strptime("18:00", "%H:%M").time()
 
-        with st.form("modal_edit_form"):
+        with st.form("modal_edit_form_direct"):
             new_title = st.text_input("일정 제목 변경", value=ev["title"])
             col_pop1, col_pop2 = st.columns(2)
             with col_pop1:
@@ -673,7 +620,7 @@ def page_my_calendar():
             st.session_state.editing_event_idx = None
             st.rerun()
 
-    # ── [새 일정 등록 공간] ──────────────────────────────
+    # ── [새 일정 추가 공간] ──────────────────────────────
     st.markdown("---")
     with st.expander("➕ 새 일정 추가하기", expanded=False):
         with st.form("event_add_form_normal"):
