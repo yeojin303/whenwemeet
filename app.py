@@ -446,9 +446,51 @@ def page_home():
 
 
 # ════════════════════════════════════════════════
-# 나의 일정 (오류 수정 완료 버전)
+# 나의 일정 (아이폰 캘린더 스타일 바 형태 + 수정 기능 완료)
 # ════════════════════════════════════════════════
 def page_my_calendar():
+    st.markdown("""
+        <style>
+        div[data-testid="stColumn"] div.stButton > button {
+            background-color: #E3F2FD !important;
+            color: #0D47A1 !important;
+            border-left: 4px solid #2196F3 !important;
+            border-top: none !important;
+            border-right: none !important;
+            border-bottom: none !important;
+            border-radius: 4px !important;
+            padding: 4px 6px !important;
+            margin: 2px 0px !important;
+            font-size: 11px !important;
+            font-weight: 500 !important;
+            line-height: 1.3 !important;
+            text-align: left !important;
+            width: 100% !important;
+            display: block !important;
+            white-space: normal !important;
+            word-break: break-all !important;
+            box-shadow: 0px 1px 2px rgba(0,0,0,0.05) !important;
+        }
+        div[data-testid="stColumn"] div.stButton > button:hover {
+            background-color: #BBDEFB !important;
+            color: #0D47A1 !important;
+        }
+        div[data-testid="stColumn"] div.stButton > button[key^="add_btn_"] {
+            background-color: #F5F5F5 !important;
+            color: #666666 !important;
+            border: 1px dashed #CCCCCC !important;
+            text-align: center !important;
+            border-radius: 4px !important;
+            font-size: 10px !important;
+            padding: 2px !important;
+        }
+        div[data-testid="stColumn"] div.stButton > button[key^="add_btn_"]:hover {
+            background-color: #EEEEEE !important;
+            color: #333333 !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
     h1, h2 = st.columns([5, 1])
     with h2:
         if st.button("홈으로", use_container_width=True):
@@ -500,19 +542,18 @@ def page_my_calendar():
                 ]
                 
                 with cols[idx]:
-                    st.markdown(f"**{day_num}**")
+                    st.markdown(f"<span style='font-size:13px; font-weight:bold;'>{day_num}</span>", unsafe_allow_html=True)
                     
                     for ev_i, ev in day_events:
                         s_t = ev["start"].split()[1] if " " in ev["start"] else ""
-                        e_t = ev["end"].split()[1] if " " in ev["end"] else ""
-                        time_label = f"🕐 {s_t}~{e_t}\n{ev['title']}"
+                        time_label = f"📍 {s_t} {ev['title']}"
                         
                         if st.button(time_label, key=f"ev_click_{date_str}_{ev_i}", use_container_width=True):
                             st.session_state.editing_event_idx = ev_i
                             st.session_state.active_add_day = None
                             st.rerun()
                     
-                    if st.button("➕ 추가", key=f"add_btn_{date_str}", use_container_width=True, type="secondary"):
+                    if st.button("➕", key=f"add_btn_{date_str}", use_container_width=True):
                         st.session_state.active_add_day = day_num
                         st.session_state.editing_event_idx = None
                         st.rerun()
