@@ -912,115 +912,112 @@ def page_group_room():
     mc3.metric("👥 참여 인원", f"{len(g_members)}명")
     st.caption(f"🕐 검색 시간대: {t_start:02d}:00 ~ {t_end:02d}:00")
 
-    import streamlit.components.v1 as components
+    st.markdown("### 📅 날짜를 클릭하면 시간대 상세를 볼 수 있어요")
+    st.markdown(
+        "<div style='display:flex; gap:16px; margin-bottom:8px; font-size:13px;'>"
+        "<span>🟩 약속 가능</span><span>🟥 약속 불가</span><span>⬜ 범위 외</span></div>",
+        unsafe_allow_html=True
+    )
 
-    cur_selected = st.session_state.get("grp_selected_day")
-
-    # ── 날짜 데이터 JSON 직렬화 ──────────
-    import json
-    cal_data = {}
+    # ── 결과 캘린더 렌더링 (HTML 테이블 – 모바일 안전) ─────────────────────────
     render_year, render_month = start_d.year, start_d.month
     end_year, end_month = end_d.year, end_d.month
+
     while (render_year, render_month) <= (end_year, end_month):
-        for week in calendar.monthcalendar(render_year, render_month):
+        cal_matrix = calendar.monthcalendar(render_year, render_month)
+        cur_selected = st.session_state.get("grp_selected_day")
+
+        # HTML 캘린더 테이블 (날짜 셀만, 버튼은 별도)
+        cal_html = (
+            f"<div style='margin-bottom:4px; font-weight:bold; font-size:15px;'>"
+            f"{render_year}년 {render_month}월</div>"
+            "<table style='width:100%; border-collapse:separate; border-spacing:3px; table-layout:fixed;'>"
+            "<tr>"
+        )
+        day_names = ["일", "월", "화", "수", "목", "금", "토"]
+        for dn in day_names:
+            cal_html += (
+                f"<th style='text-align:center; padding:6px 2px; font-size:12px; "
+                f"color:#555; font-weight:bold;'>{dn}</th>"
+            )
+        cal_html += "</tr>"
+
+        for week in cal_matrix:
+            cal_html += "<tr>"
             for d_num in week:
                 if d_num == 0:
+                    cal_html += "<td></td>"
                     continue
                 d_key = f"{render_year}-{render_month:02d}-{d_num:02d}"
                 d_date = date_type(render_year, render_month, d_num)
                 in_range = start_d <= d_date <= end_d
-                cal_data[d_key] = {
-                    "in_range": in_range,
-                    "color": colors.get(d_key, "red") if in_range else "none",
-                }
-        render_month += 1
-        if render_month > 12:
-            render_month = 1
-            render_year += 1
+                is_sel = (d_key == cur_selected)
 
-    # ── HTML 캘린더 컴포넌트 ──────────
-    render_year, render_month = start_d.year, start_d.month
-    html_parts = []
-    html_parts.append("""
-<style>
-  body{margin:0;padding:0;font-family:sans-serif;}
-  .cal-table{width:100%;border-collapse:separate;border-spacing:4px;table-layout:fixed;margin-bottom:12px;}
-  .cal-table th{text-align:center;font-size:13px;color:#666;padding:6px 0;}
-  .cal-cell{text-align:center;padding:11px 2px;border-radius:8px;font-size:14px;font-weight:700;cursor:default;}
-  .cal-cell.green{background:#C8E6C9;color:#1B5E20;border:2px solid #388E3C;cursor:pointer;}
-  .cal-cell.red{background:#FFCDD2;color:#7F0000;border:2px solid #D32F2F;cursor:pointer;}
-  .cal-cell.gray{background:#F5F5F5;color:#bbb;border:1px solid #e0e0e0;}
-  .cal-cell.selected{outline:3px solid #1565C0;outline-offset:1px;}
-  .month-label{font-size:15px;font-weight:700;margin:14px 0 4px;}
-</style>
-""")
+                if in_range:
+                    color_val = colors.get(d_key, "red")
+                    if color_val == "green":
+                        bg, txt = "#C8E6C9", "#1B5E20"
+                        bdr = "#1976D2" if is_sel else "#388E3C"
+                    else:
+                        bg, txt = "#FFCDD2", "#7F0000"
+                        bdr = "#1976D2" if is_sel else "#D32F2F"
+                    bw = "3px" if is_sel else "1px"
+                    shadow = "box-shadow:0 0 0 2px #1976D2;" if is_sel else ""
+                else:
+                    bg, txt, bdr, bw, shadow = "#F5F5F5", "#bbb", "#ddd", "1px", ""
 
-    while (render_year, render_month) <= (end_year, end_month):
-        cal_matrix = calendar.monthcalendar(render_year, render_month)
-        html_parts.append(f"<div class='month-label'>{render_year}년 {render_month}월</div>")
-        html_parts.append("<table class='cal-table'><tr>")
-        for dn in ["일","월","화","수","목","금","토"]:
-            html_parts.append(f"<th>{dn}</th>")
-        html_parts.append("</tr>")
+                cal_html += (
+                    f"<td style='background:{bg}; color:{txt}; text-align:center; "
+                    f"padding:8px 2px; border-radius:6px; border:{bw} solid {bdr}; "
+                    f"font-weight:bold; font-size:13px; {shadow}'>{d_num}</td>"
+                )
+            cal_html += "</tr>"
+        cal_html += "</table>"
+        st.markdown(cal_html, unsafe_allow_html=True)
+
+        # 버튼 행: in_range 날짜만 (7열 columns 유지하되 빈 칸 처리)
         for week in cal_matrix:
-            html_parts.append("<tr>")
-            for d_num in week:
+            has_any = any(
+                d_num != 0 and start_d <= date_type(render_year, render_month, d_num) <= end_d
+                for d_num in week
+            )
+            if not has_any:
+                continue
+            btn_cols = st.columns(7)
+            for idx, d_num in enumerate(week):
                 if d_num == 0:
-                    html_parts.append("<td></td>")
                     continue
                 d_key = f"{render_year}-{render_month:02d}-{d_num:02d}"
-                info = cal_data.get(d_key, {"in_range": False, "color": "none"})
-                if info["in_range"]:
-                    cls = info["color"]  # "green" or "red"
-                    sel_cls = " selected" if d_key == cur_selected else ""
-                    td_onclick = "pick('" + d_key + "')"
-                    html_parts.append(
-                        "<td class='cal-cell " + cls + sel_cls + "' "
-                        "onclick='" + td_onclick + "'>" + str(d_num) + "</td>"
-                    )
-                else:
-                    html_parts.append(f"<td class='cal-cell gray'>{d_num}</td>")
-            html_parts.append("</tr>")
-        html_parts.append("</table>")
+                d_date = date_type(render_year, render_month, d_num)
+                if start_d <= d_date <= end_d:
+                    is_sel = (d_key == cur_selected)
+                    lbl = "✔ 선택됨" if is_sel else "상세"
+                    if btn_cols[idx].button(lbl, key=f"detail_{d_key}", use_container_width=True):
+                        st.session_state.grp_selected_day = None if is_sel else d_key
+                        st.rerun()
+
+        st.markdown("<br>", unsafe_allow_html=True)
         render_month += 1
         if render_month > 12:
             render_month = 1
             render_year += 1
 
-    html_parts.append("""
-<script>
-function pick(dkey){
-  window.parent.postMessage({type:"streamlit:setComponentValue", value:dkey}, "*");
-}
-</script>
-""")
-
-    cal_html_str = "\n".join(html_parts)
-    # 월 수에 따라 높이 동적 계산
-    n_months = (end_year * 12 + end_month) - (start_d.year * 12 + start_d.month) + 1
-    cal_height = 60 + n_months * 260
-
-    clicked_day = components.html(cal_html_str, height=cal_height, scrolling=False)
-
-    if clicked_day and clicked_day != cur_selected:
-        st.session_state.grp_selected_day = clicked_day
-        st.rerun()
-    elif clicked_day and clicked_day == cur_selected:
-        st.session_state.grp_selected_day = None
-        st.rerun()
-
-    # ── 날짜 클릭 시 상세 패널 (캘린더 바로 아래) ──────────
-    selected = cur_selected
+    # ── 날짜 클릭 시 상세 패널 (캘린더 아래) ──────────
+    selected = st.session_state.get("grp_selected_day")
     if selected:
         slots = st.session_state.grp_free_slots.get(selected, [False] * 96)
         year_s, month_s, day_s = map(int, selected.split("-"))
 
         st.markdown("---")
-        st.subheader(f"📍 {year_s}년 {month_s}월 {day_s}일 시간대 분석")
-        if st.button("✖ 닫기", key="close_detail"):
-            st.session_state.grp_selected_day = None
-            st.rerun()
+        col_title, col_close = st.columns([5, 1])
+        with col_title:
+            st.subheader(f"📍 {year_s}년 {month_s}월 {day_s}일 시간대 분석")
+        with col_close:
+            if st.button("✖ 닫기", key="close_detail"):
+                st.session_state.grp_selected_day = None
+                st.rerun()
 
+        # 15분 단위 슬롯으로 연속 가능 구간 계산
         s_idx = t_start * 4
         e_idx = t_end * 4
         avail_slots = [i for i in range(s_idx, e_idx) if i < len(slots) and slots[i]]
@@ -1028,6 +1025,7 @@ function pick(dkey){
         if not avail_slots:
             st.error("이 날짜에는 모두가 가능한 시간대가 없습니다.")
         else:
+            # 연속 구간 묶기
             ranges = []
             seg_s = avail_slots[0]
             seg_e = avail_slots[0]
@@ -1039,36 +1037,29 @@ function pick(dkey){
                     seg_s = seg_e = i
             ranges.append((seg_s, seg_e + 1))
 
-            range_tags = []
-            for rs, re in ranges:
-                dur = (re - rs) * 15
-                dur_str = f"{dur//60}시간 {dur%60}분" if dur % 60 else f"{dur//60}시간"
-                range_tags.append(
-                    f"<div style='background:#fff;border:1px solid #388E3C;border-radius:6px;"
-                    f"padding:8px 12px;display:inline-block;margin:4px;font-size:14px;color:#1B5E20;'>"
-                    f"<b>{slot_to_time(rs)} ~ {slot_to_time(re)}</b>"
-                    f"<span style='font-size:12px;color:#555;margin-left:6px;'>({dur_str})</span></div>"
-                )
+            # 가능 구간 텍스트 표시
+            range_texts = [f"<b>{slot_to_time(rs)} &#8209; {slot_to_time(re)}</b>" for rs, re in ranges]
             st.markdown(
-                "<div style='background:#E8F5E9;border:1px solid #388E3C;border-radius:10px;"
-                "padding:14px 16px;'>"
-                "<div style='font-size:13px;font-weight:700;color:#1B5E20;margin-bottom:8px;'>✅ 연속 가능 시간대</div>"
-                + "".join(range_tags) + "</div>",
+                "<div style='background:#E8F5E9; border:1px solid #388E3C; border-radius:8px; "
+                "padding:14px 16px; font-size:14px; color:#1B5E20; line-height:2;'>"
+                "✅ 연속 가능 시간대:<br>" + " &nbsp;/&nbsp; ".join(range_texts) + "</div>",
                 unsafe_allow_html=True
             )
             st.markdown("<br>", unsafe_allow_html=True)
 
+            # 약속 확정 버튼
             st.markdown("##### ⏰ 약속 시간 확정")
+            btn_cols = st.columns(min(len(ranges), 3))
             for idx, (rs, re) in enumerate(ranges):
-                dur = (re - rs) * 15
-                dur_str = f"{dur//60}시간 {dur%60}분" if dur % 60 else f"{dur//60}시간"
-                if st.button(
-                    f"{slot_to_time(rs)} ~ {slot_to_time(re)}  ({dur_str})",
+                duration_min = (re - rs) * 15
+                dur_str = f"{duration_min // 60}시간 {duration_min % 60}분" if duration_min % 60 else f"{duration_min // 60}시간"
+                if btn_cols[idx % 3].button(
+                    f"{slot_to_time(rs)} - {slot_to_time(re)} ({dur_str})",
                     key=f"confirm_{selected}_{rs}",
                     use_container_width=True
                 ):
                     st.balloons()
-                    st.success(f"🎉 약속 확정!  {year_s}년 {month_s}월 {day_s}일  {slot_to_time(rs)} ~ {slot_to_time(re)}")
+                    st.success(f"🎉 약속 확정!  {year_s}년 {month_s}월 {day_s}일  {slot_to_time(rs)} - {slot_to_time(re)}")
 
     # ── 공통 시간표 뷰 ─────────────────────────
     st.markdown("---")
