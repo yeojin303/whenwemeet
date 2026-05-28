@@ -511,7 +511,6 @@ def page_my_calendar():
                 cell_html += "</div>"
                 cols[idx].markdown(cell_html, unsafe_allow_html=True)
 
-                # 모바일 오작동 방지를 위해 간소화된 버튼 레이아웃
                 c_add, c_edit = cols[idx].columns(2)
                 if c_add.button("＋", key=f"add_btn_{date_str}", use_container_width=True):
                     st.session_state.active_add_day = day_num
@@ -927,12 +926,10 @@ def page_group_room():
         cal_matrix = calendar.monthcalendar(render_year, render_month)
         cur_selected = st.session_state.get("grp_selected_day")
 
-        # 요일 헤더
         day_cols = st.columns(7)
         for idx, dn in enumerate(["일", "월", "화", "수", "목", "금", "토"]):
             day_cols[idx].markdown(f"<center><b>{dn}</b></center>", unsafe_allow_html=True)
 
-        # 날짜 직접 클릭 가능한 통합 버튼형 달력 구조 (별도 상세 칸 나뉨 제거)
         for week in cal_matrix:
             btn_cols = st.columns(7)
             for idx, d_num in enumerate(week):
@@ -945,13 +942,11 @@ def page_group_room():
                 in_range = start_d <= d_date <= end_d
                 is_sel = (d_key == cur_selected)
 
-                # 상태 아이콘 지정
                 if in_range:
                     status_icon = "🟢" if colors.get(d_key, "red") == "green" else "🔴"
                 else:
                     status_icon = "⚪"
                 
-                # 선택 상태에 따른 시각 강조
                 btn_label = f"{status_icon} {d_num}" if not is_sel else f"⭐ {d_num}"
                 btn_type = "primary" if is_sel else "secondary"
 
@@ -967,7 +962,7 @@ def page_group_room():
             render_month = 1
             render_year += 1
 
-    # ── 날짜 클릭 시 상세 패널 (달력 바로 아래 유연하게 결합) ──────────
+    # ── 날짜 클릭 시 상세 패널 및 시간 직접 선택 ──────────────────
     selected = st.session_state.get("grp_selected_day")
     if selected:
         slots = st.session_state.grp_free_slots.get(selected, [False] * 96)
@@ -1004,12 +999,30 @@ def page_group_room():
             st.markdown(
                 "<div style='background:#E8F5E9; border:1px solid #388E3C; border-radius:8px; "
                 "padding:10px; font-size:13px; color:#1B5E20; line-height:1.8; word-break:break-all;'>"
-                "✅ 공통 가용 시간대:<br>" + " | ".join(range_texts) + "</div>",
+                "✅ 공통 가용 시간대 추천:<br>" + " | ".join(range_texts) + "</div>",
                 unsafe_allow_html=True
             )
             st.markdown("<br>", unsafe_allow_html=True)
 
-            st.markdown("##### ⏰ 약속 시간 확정하기")
+            # [💡 직접 설정 기능 탑재 부]
+            st.markdown("##### ⏰ 시간 직접 설정하여 확정하기")
+            time_options = [f"{h:02d}:{m:02d}" for h in range(24) for m in [0, 15, 30, 45]]
+            
+            c_custom1, c_custom2 = st.columns(2)
+            with c_custom1:
+                custom_start = st.selectbox("직접 선택 - 시작 시간", options=time_options, index=time_options.index("12:00"))
+            with c_custom2:
+                custom_end = st.selectbox("직접 선택 - 종료 시간", options=time_options, index=time_options.index("14:00"))
+
+            if st.button("🚀 위 입력된 커스텀 시간으로 약속 확정", use_container_width=True, type="primary"):
+                if custom_start >= custom_end:
+                    st.error("종료 시간은 시작 시간보다 늦어야 합니다.")
+                else:
+                    st.balloons()
+                    st.success(f"🎉 약속 직접 확정 완료! {year_s}년 {month_s}월 {day_s}일 {custom_start} - {custom_end}")
+
+            st.markdown("---")
+            st.markdown("##### ✨ 가용 시간대 목록에서 바로 선택하기")
             btn_cols = st.columns(min(len(ranges), 2))
             for idx, (rs, re) in enumerate(ranges):
                 duration_min = (re - rs) * 15
@@ -1020,7 +1033,7 @@ def page_group_room():
                     use_container_width=True
                 ):
                     st.balloons()
-                    st.success(f"🎉 약속 확정! {year_s}년 {month_s}월 {day_s}일 {slot_to_time(rs)} - {slot_to_time(re)}")
+                    st.success(f"🎉 약속 추천 확정! {year_s}년 {month_s}월 {day_s}일 {slot_to_time(rs)} - {slot_to_time(re)}")
 
     # ── 공통 시간표 뷰 ─────────────────────────
     st.markdown("---")
