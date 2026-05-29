@@ -4,8 +4,10 @@ import random
 import string
 import hashlib
 import threading
-from datetime import datetime, date as date_type, timedelta
-from supabase import create_client, Client
+from datetime import datetime, date as date_type, timedelta, timezone
+
+# 대한민국 표준시 (UTC+9) 설정
+KST = timezone(timedelta(hours=9))
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
@@ -311,11 +313,13 @@ def db_get_room_info(room_code):
 # 세션 초기화
 # ════════════════════════════════════════════════
 def init_session():
+    # 현재 시간을 항상 대한민국 표준시(KST) 기준으로 구합니다.
+    now_kst = datetime.now(KST)
     defaults = {
         "app_page": "LOGIN",
         "my_events": [],
         "my_timetable": [],
-        "my_exceptions": [], # 예외 목록 세션 추가
+        "my_exceptions": [], 
         "current_group_code": None,
         "my_nickname": "",
         "fixed_expander_open": False,
@@ -324,8 +328,8 @@ def init_session():
         "username": None,
         "data_loaded": False,
         "confirm_delete_account": False,
-        "view_year": datetime.now().year,
-        "view_month": datetime.now().month,
+        "view_year": now_kst.year,
+        "view_month": now_kst.month,
         "cal_selected_date": None,
         "cal_selected_ev_id": None,
         "cal_selected_ev_idx": None,
@@ -372,7 +376,6 @@ def load_user_data():
         for t in sorted_timetable
     ]
     
-    # 캘린더 연동을 위한 예외 데이터 추출 및 저장
     exceptions_list = []
     for t in sorted_timetable:
         for ex in t.get("timetable_exceptions", []):
@@ -383,7 +386,7 @@ def load_user_data():
                 "date": ex["exception_date"],
                 "start_time": t["start_time"],
                 "end_time": t["end_time"],
-                "color": "#9E9E9E"  # 예외 일정 전용 색상상
+                "color": "#9E9E9E"  
             })
     st.session_state.my_exceptions = exceptions_list
     
@@ -422,7 +425,7 @@ def render_header(title, back_page=None, back_label="← 홈으로"):
 # HTML 달력 빌더
 # ════════════════════════════════════════════════
 def build_calendar_html(year, month, events, exceptions=None, selected_date_str=None):
-    today = datetime.now()
+    today = datetime.now(KST) # 대한민국 시간 기준 적용
     cal_matrix = calendar.monthcalendar(year, month)
 
     day_names   = ["일", "월", "화", "수", "목", "금", "토"]
@@ -453,7 +456,6 @@ def build_calendar_html(year, month, events, exceptions=None, selected_date_str=
             elif is_today:
                 cls += " wwm-cell-today"
 
-            # 당일 활성화 아이템 수집 (일반 일정 + 예외 일정)
             day_display_items = []
             
             for ev in events:
@@ -466,7 +468,6 @@ def build_calendar_html(year, month, events, exceptions=None, selected_date_str=
                     if ex["date"] == date_str:
                         day_display_items.append({"title": ex["title"], "color": ex["color"], "time": ex["start_time"]})
 
-            # 🛠️ [기능 수정] 캘린더 내부 바도 시간 순서대로 정렬
             day_display_items = sorted(day_display_items, key=lambda x: x["time"])
 
             bars = ""
@@ -604,10 +605,9 @@ def page_home():
     with c1:
         st.title("🤝 When We Meet")
 
-    now = datetime.now()
+    now = datetime.now(KST) # 대한민국 시간 기준 적용
     st.subheader(f"📅 {now.year}년 {now.month}월")
 
-    # 홈화면 달력 호출시에도 실시간 세션 데이터 연동 유지
     cal_html = build_calendar_html(now.year, now.month, st.session_state.my_events, st.session_state.my_exceptions, None)
     st.markdown(cal_html, unsafe_allow_html=True)
 
@@ -699,7 +699,6 @@ def page_my_calendar():
         active_date = st.session_state.cal_selected_date
         active_str  = active_date.strftime("%Y-%m-%d")
 
-        # 당일 활성화 목록 통합 구축 (일반일정 + 예외일정)
         combined_day_items = []
 
         for i, ev in enumerate(st.session_state.my_events):
@@ -729,7 +728,6 @@ def page_my_calendar():
                     "end_time": ex["end_time"]
                 })
         
-        # 🛠️ [기능 수정] 하단 리스트 내의 모든 항목을 시간 순서대로 정렬
         combined_day_items = sorted(combined_day_items, key=lambda x: x["start_time"])
 
         st.markdown("---")
@@ -770,10 +768,10 @@ def page_my_calendar():
                     )
                 with col_btn:
                     if item["is_exception"]:
-                        # 예외 일정은 바로 삭제(해제) 버튼 제공 및 즉시 화면 반영 처리
                         if st.button("✖", key=f"del_ex_btn_{item_id}", use_container_width=True):
                             if db_delete_timetable_exception(item["ex_id"]):
                                 st.session_state.data_loaded = False
+                                st.session_state.grp_date_colors = None  # 예외 삭제 시 대조 캐시 데이터도 즉시 초기화
                                 load_user_data()
                                 st.rerun()
                     else:
@@ -795,7 +793,8 @@ def page_my_calendar():
                         e_d_obj = datetime.strptime(ev["end"].split()[0],   "%Y-%m-%d").date()
                         e_t_obj = datetime.strptime(ev["end"].split()[1],   "%H:%M").time()
                     except Exception:
-                        s_d_obj = e_d_obj = datetime.now().date()
+                        now_kst = datetime.now(KST)
+                        s_d_obj = e_d_obj = now_kst.date()
                         s_t_obj = datetime.strptime("09:00", "%H:%M").time()
                         e_t_obj = datetime.strptime("18:00", "%H:%M").time()
 
@@ -956,18 +955,16 @@ def page_fixed_timetable():
                 option_map[display_text] = t
                 
             selected_option = st.selectbox("제외할 고정 일정 선택", options=options, key="exc_tt_select", label_visibility="collapsed")
-            exception_date = st.date_input("예외 날짜 선택", value=datetime.now().date(), key="exc_date_picker")
+            exception_date = st.date_input("예외 날짜 선택", value=datetime.now(KST).date(), key="exc_date_picker") # KST 적용
             
             if st.button("선택한 고정 일정 예외 등록 💾", type="primary", use_container_width=True):
                 target_timetable = option_map[selected_option]
                 
-                # 요일 불일치 검증 구도화
                 selected_date_weekday = ["월","화","수","목","금","토","일"][exception_date.weekday()]
                 
                 if target_timetable["day"] != selected_date_weekday:
                     st.error(f"❌ 요일이 일치하지 않습니다! 선택한 일정은 {target_timetable['day']}요일 일정이나, 선택한 날짜는 {selected_date_weekday}요일입니다.")
                 else:
-                    # 중복 예외 등록 검증 구도화
                     is_duplicate = False
                     for ex in st.session_state.my_exceptions:
                         if ex["timetable_id"] == target_timetable["id"] and ex["date"] == str(exception_date):
@@ -983,6 +980,7 @@ def page_fixed_timetable():
                         else:
                             st.session_state.ft_success_msg = f"✅ [{exception_date}] 해당 고정 일정에 대한 예외 처리가 정상 저장되었습니다!"
                             st.session_state.data_loaded = False
+                            st.session_state.grp_date_colors = None  # 예외 추가 시에도 대조 캐시 초기화
                             load_user_data()
                             st.rerun()
 
@@ -1010,6 +1008,7 @@ def page_fixed_timetable():
                         st.session_state.tt_selected_id = None
                     st.session_state.ft_success_msg = None
                     st.session_state.data_loaded = False
+                    st.session_state.grp_date_colors = None  # 고정 시간표 항목 삭제 시에도 캐시 초기화
                     load_user_data()
                     st.rerun()
 
@@ -1094,7 +1093,7 @@ def page_group_list():
                 else:
                     st.error("유효하지 않은 코드입니다.")
             else:
-                st.warning("코드와 닉네임을 입력해주세요.")
+                st.warning("코드 and 닉네임을 입력해주세요.")
 
     st.markdown("---")
     st.subheader("참여 중인 방")
@@ -1132,8 +1131,8 @@ def compute_free_slots(g_members, year, month, day, time_start_h, time_end_h):
     for name, m_data in g_members.items():
         for t in m_data.get("timetable", []):
             if t["day"] == w_str:
-                if d_str in t.get("exceptions", []):
-                    continue
+                if any(str(ex) == d_str for ex in t.get("exceptions", [])):
+                    continue 
                 try:
                     sh, sm = map(int, t["start"].split(":"))
                     eh, em = map(int, t["end"].split(":"))
@@ -1227,7 +1226,7 @@ def page_group_room():
     st.markdown("---")
     st.subheader("🔍 약속 가능 날짜 찾기")
 
-    now      = datetime.now()
+    now      = datetime.now(KST) # 대한민국 시간 기준 적용
     last_day = calendar.monthrange(now.year, now.month)[1]
 
     col_d, col_m = st.columns(2)
@@ -1393,8 +1392,6 @@ def page_group_room():
             '</div>'
         )
         st.markdown(bar_html, unsafe_allow_html=True)
-
-        # 🛠️ [기능 삭제] '공통 가용 시간대텍스트 출력' 항목 및 '바로 선택 확정' UI 완전 삭제제
 
     st.markdown("---")
     st.subheader("📊 요일별 공통 가용 시간표")
