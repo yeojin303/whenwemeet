@@ -198,7 +198,6 @@ def db_delete_timetable_entry(entry_id):
     except Exception as e:
         st.error(f"시간표 삭제 오류: {e}")
 
-# 🌟 고정 시간표 예외 등록/삭제 DB 헬퍼 함수 추가
 def db_save_timetable_exception(timetable_id, exception_date):
     try:
         res = supabase.table("timetable_exceptions").insert({
@@ -340,7 +339,6 @@ def load_user_data():
         for e in db_get_user_events(uid)
     ]
     
-    # 🌟 고정 시간표를 가져와 요일 순 ➡️ 시간 순으로 자동 정렬하여 세션에 보관합니다.
     raw_timetable = db_get_timetable(uid)
     sorted_timetable = sorted(
         raw_timetable,
@@ -432,11 +430,11 @@ def build_calendar_html(year, month, events, selected_date_str=None):
                 bars += f'<div class="wwm-more">+{len(day_events)-2}</div>'
 
             today_lbl = '<span class="wwm-today-lbl">Today</span>' if is_today else ""
-            sel_ring  = "🌞 " if is_today else ""
-
+            
+            # 🌟 수정한 부분: 숫자 옆에 중복으로 뜨던 태양 이모티콘(🌞)을 지웠습니다!
             html += (
                 f'<div class="{cls}">'
-                f'<span class="wwm-dnum" style="color:{num_color};">{sel_ring}{day_num}</span>'
+                f'<span class="wwm-dnum" style="color:{num_color};">{day_num}</span>'
                 f'{today_lbl}{bars}'
                 f'</div>'
             )
@@ -804,7 +802,6 @@ def page_fixed_timetable():
     with h1:
         st.title("🕞 고정 시간표 및 예외 관리")
 
-    # 1. 고정 일정 추가 기능
     with st.expander("➕ 고정 일정 추가", expanded=st.session_state.fixed_expander_open):
         f_title = st.text_input("일정 제목", key="ft_title")
         f_day   = st.selectbox("요일", ["월","화","수","목","금","토","일"], key="ft_day")
@@ -823,14 +820,12 @@ def page_fixed_timetable():
             else:
                 st.warning("일정 제목을 입력해주세요.")
 
-    # 🌟 2. 이미지에 명시된 '고정 시간표 예외(휴강) 등록' UI 완벽 추가
     with st.expander("🚨 🛑 고정 시간표 예외(휴강) 등록", expanded=True):
         st.markdown("<p style='font-size:13px; color:#555;'>특정 날짜에 휴강이나 개인 사정으로 비워지는 고정 일정을 선택하세요.</p>", unsafe_allow_html=True)
         
         if not st.session_state.my_timetable:
             st.caption("등록된 고정 일정이 없습니다.")
         else:
-            # 🌟 정렬 수집: 요일 순서대로 셀렉트 박스 옵션 만들기
             options = []
             option_map = {}
             for t in st.session_state.my_timetable:
@@ -851,7 +846,6 @@ def page_fixed_timetable():
                     st.session_state.data_loaded = False
                     st.rerun()
 
-    # 3. 등록된 고정 일정 리스트 표시
     if st.session_state.my_timetable:
         st.markdown("### 📋 등록된 고정 일정")
         for ti, t in enumerate(st.session_state.my_timetable):
@@ -870,7 +864,7 @@ def page_fixed_timetable():
                     st.session_state.my_timetable.pop(ti)
                     st.rerun()
 
-    st.write("### 📊 일주일 타임라인 (15분 단위)")
+    st.write("### 🗑️ 일주일 타임라인 (15분 단위)")
     table_html = (
         "<div style='overflow-x:auto;-webkit-overflow-scrolling:touch;'>"
         "<table style='width:100%;min-width:600px;table-layout:fixed;border-collapse:collapse;"
