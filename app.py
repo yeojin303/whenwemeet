@@ -30,15 +30,18 @@ COLOR_PALETTE = [
 # ── 전역 CSS (모바일 최적화) ─────────────────────────────────────────────────
 GLOBAL_CSS = """
 <style>
+/* 앱 전체 좌우 여백 최소화 */
 .main .block-container {
     padding-left: 0.75rem !important;
     padding-right: 0.75rem !important;
     max-width: 100% !important;
 }
+/* 네비게이션 3-col 버튼 패딩 최소화 */
 [data-testid="stHorizontalBlock"] [data-testid="column"] {
     padding-left: 2px !important;
     padding-right: 2px !important;
 }
+/* CSS Grid 달력 */
 .wwm-cal {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
@@ -75,6 +78,7 @@ GLOBAL_CSS = """
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .wwm-more { font-size: 8px; color: #999; margin-top: 1px; }
+/* 그룹달력 */
 .wwm-gcell {
     text-align: center; border-radius: 6px;
     padding: 6px 2px; min-height: 52px;
@@ -175,18 +179,14 @@ def db_get_timetable(user_id):
 
 def db_save_timetable_entry(user_id, entry):
     try:
-        payload = {
+        supabase.table("timetable").insert({
             "user_id": user_id,
             "title": entry["title"],
             "day": entry["day"],
             "start_time": entry["start"],
             "end_time": entry["end"],
             "color": entry.get("color", get_random_color()),
-        }
-        if entry.get("id"):
-            supabase.table("timetable").update(payload).eq("id", entry["id"]).execute()
-        else:
-            supabase.table("timetable").insert(payload).execute()
+        }).execute()
     except Exception as e:
         st.error(f"시간표 저장 오류: {e}")
 
@@ -196,25 +196,32 @@ def db_delete_timetable_entry(entry_id):
     except Exception as e:
         st.error(f"시간표 삭제 오류: {e}")
 
-# 고정시간표 예외(휴강일) 관련 DB 헬퍼 함수
-def db_get_timetable_exceptions(user_id):
+# ── timetable_exceptions DB 함수 추가 ──
+def db_get_exceptions(user_id):
     try:
         res = supabase.table("timetable_exceptions").select("*").eq("user_id", user_id).execute()
-        return [row["exception_date"] for row in (res.data or [])]
+        return res.data or []
     except Exception:
         return []
 
-def db_add_timetable_exception(user_id, date_str):
+def db_save_exception(user_id, exception_date, timetable_id, title):
     try:
-        supabase.table("timetable_exceptions").insert({"user_id": user_id, "exception_date": date_str}).execute()
+        supabase.table("timetable_exceptions").insert({
+            "user_id": user_id,
+            "exception_date": str(exception_date),
+            "timetable_id": timetable_id,
+            "title": title
+        }).execute()
+        return True
     except Exception as e:
         st.error(f"예외 날짜 등록 오류: {e}")
+        return False
 
-def db_delete_timetable_exception(user_id, date_str):
+def db_delete_exception(exception_id):
     try:
-        supabase.table("timetable_exceptions").delete().eq("user_id", user_id).eq("exception_date", date_str).execute()
+        supabase.table("timetable_exceptions").delete().eq("id", exception_id).execute()
     except Exception as e:
-        st.error(f"예외 날짜 삭제 오류: {e}")
+        st.error(f"예외 삭제 오류: {e}")
 
 def db_get_rooms(user_id):
     try:
@@ -275,7 +282,6 @@ def db_get_room_members(room_code):
             uid, nick = m["user_id"], m["nickname"]
             events_raw = db_get_user_events(uid)
             timetable_raw = db_get_timetable(uid)
-            exceptions_raw = db_get_timetable_exceptions(uid) # 유저별 휴강일 로드
             members[nick] = {
                 "events": [
                     {"title": e["title"], "start": e["start_dt"], "end": e["end_dt"]}
@@ -286,7 +292,6 @@ def db_get_room_members(room_code):
                      "start": t["start_time"], "end": t["end_time"]}
                     for t in timetable_raw
                 ],
-                "exceptions": exceptions_raw
             }
         return members
     except Exception:
@@ -308,7 +313,7 @@ def init_session():
         "app_page": "LOGIN",
         "my_events": [],
         "my_timetable": [],
-        "my_exceptions": [], # 고정일정 제외 날짜 목록 리스트
+        "my_exceptions": [],  # 예외 리스트 세션 추가
         "current_group_code": None,
         "my_nickname": "",
         "fixed_expander_open": False,
@@ -319,10 +324,11 @@ def init_session():
         "confirm_delete_account": False,
         "view_year": datetime.now().year,
         "view_month": datetime.now().month,
+        # 달력 선택된 날짜 (date 객체)
         "cal_selected_date": None,
         "cal_selected_ev_id": None,
         "cal_selected_ev_idx": None,
-        "tt_selected_id": None,
+        # 그룹 달력
         "grp_date_colors": None,
         "grp_free_slots": None,
         "grp_selected_day": None,
@@ -355,7 +361,7 @@ def load_user_data():
          "start": t["start_time"], "end": t["end_time"], "color": t.get("color", get_random_color())}
         for t in db_get_timetable(uid)
     ]
-    st.session_state.my_exceptions = db_get_timetable_exceptions(uid)
+    st.session_state.my_exceptions = db_get_exceptions(uid)  # 예외 날짜 데이터 로드
     st.session_state.my_joined_rooms = db_get_rooms(uid)
     st.session_state.data_loaded = True
 
@@ -388,9 +394,14 @@ def render_header(title, back_page=None, back_label="← 홈으로"):
 
 
 # ════════════════════════════════════════════════
-# HTML 달력 빌더
+# HTML 달력 빌더 (순수 CSS Grid – 버튼 없음)
 # ════════════════════════════════════════════════
 def build_calendar_html(year, month, events, selected_date_str=None):
+    """
+    순수 HTML/CSS Grid 달력을 반환한다.
+    events: [{"start": "YYYY-MM-DD HH:MM", "end": ..., "title": ..., "color": ...}, ...]
+    selected_date_str: "YYYY-MM-DD" or None
+    """
     today = datetime.now()
     cal_matrix = calendar.monthcalendar(year, month)
 
@@ -399,6 +410,7 @@ def build_calendar_html(year, month, events, selected_date_str=None):
 
     html = '<div class="wwm-cal">'
 
+    # 요일 헤더
     for i, dn in enumerate(day_names):
         html += f'<div class="wwm-hdr" style="color:{hdr_colors[i]};">{dn}</div>'
 
@@ -426,7 +438,6 @@ def build_calendar_html(year, month, events, selected_date_str=None):
                 ev for ev in events
                 if ev["start"].split()[0] <= date_str <= ev["end"].split()[0]
             ]
-            day_events = sorted(day_events, key=lambda x: x["start"].split()[1] if " " in x["start"] else "00:00")
 
             bars = ""
             for ev in day_events[:2]:
@@ -437,7 +448,7 @@ def build_calendar_html(year, month, events, selected_date_str=None):
                 bars += f'<div class="wwm-more">+{len(day_events)-2}</div>'
 
             today_lbl = '<span class="wwm-today-lbl">Today</span>' if is_today else ""
-            sel_ring  = "📌 " if is_today else ""
+            sel_ring  = "🌞 " if is_today else ""
 
             html += (
                 f'<div class="{cls}">'
@@ -451,7 +462,7 @@ def build_calendar_html(year, month, events, selected_date_str=None):
 
 
 # ════════════════════════════════════════════════
-# 로그인 / 회원가입
+# 0. 로그인 / 회원가입
 # ════════════════════════════════════════════════
 def page_login():
     st.title("🤝 When We Meet")
@@ -567,6 +578,7 @@ def page_home():
     now = datetime.now()
     st.subheader(f"📅 {now.year}년 {now.month}월")
 
+    # 홈 달력: 순수 HTML CSS Grid
     cal_html = build_calendar_html(now.year, now.month, [], None)
     st.markdown(cal_html, unsafe_allow_html=True)
 
@@ -584,7 +596,7 @@ def page_home():
 
 
 # ════════════════════════════════════════════════
-# 나의 일정
+# 나의 일정 – 모바일 최적화 버전
 # ════════════════════════════════════════════════
 def page_my_calendar():
     h1, h2 = st.columns([5, 2])
@@ -594,8 +606,9 @@ def page_my_calendar():
             st.session_state.cal_selected_date = None
             st.rerun()
     with h1:
-        st.title("&nbsp;나의 일정")
+        st.title("📆 나의 일정")
 
+    # ── 월 네비게이션 (3-col 은 모바일도 OK) ──
     n1, n2, n3 = st.columns([1, 4, 1])
     with n1:
         if st.button("‹", use_container_width=True):
@@ -627,17 +640,21 @@ def page_my_calendar():
     cur_year  = st.session_state.view_year
     cur_month = st.session_state.view_month
 
+    # 선택된 날짜 문자열
     sel_date_obj = st.session_state.cal_selected_date
     sel_date_str = sel_date_obj.strftime("%Y-%m-%d") if sel_date_obj else None
+    # 현재 월이 아니면 선택 초기화
     if sel_date_obj and (sel_date_obj.year != cur_year or sel_date_obj.month != cur_month):
         sel_date_str = None
         st.session_state.cal_selected_date = None
 
+    # ── 순수 HTML CSS Grid 달력 렌더링 ──
     cal_html = build_calendar_html(cur_year, cur_month, st.session_state.my_events, sel_date_str)
     st.markdown(cal_html, unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
+    # ── 날짜 선택 위젯 (모바일 네이티브 UI) ──
     st.markdown("**📌 날짜를 선택하면 일정을 확인·추가할 수 있어요**")
     picked = st.date_input(
         "날짜 선택",
@@ -650,10 +667,12 @@ def page_my_calendar():
             st.session_state.cal_selected_date  = picked
             st.session_state.cal_selected_ev_id  = None
             st.session_state.cal_selected_ev_idx = None
+            # 뷰 월 동기화
             st.session_state.view_year  = picked.year
             st.session_state.view_month = picked.month
             st.rerun()
 
+    # ── 선택된 날짜의 상세 패널 ──
     if st.session_state.cal_selected_date:
         active_date = st.session_state.cal_selected_date
         active_str  = active_date.strftime("%Y-%m-%d")
@@ -662,7 +681,6 @@ def page_my_calendar():
             (i, ev) for i, ev in enumerate(st.session_state.my_events)
             if ev["start"].split()[0] <= active_str <= ev["end"].split()[0]
         ]
-        day_events_sel = sorted(day_events_sel, key=lambda x: x[1]["start"].split()[1] if " " in x[1]["start"] else "00:00")
 
         st.markdown("---")
         hc1, hc2 = st.columns([5, 1])
@@ -675,6 +693,7 @@ def page_my_calendar():
                 st.session_state.cal_selected_ev_idx = None
                 st.rerun()
 
+        # 이 날 일정 목록
         if day_events_sel:
             st.markdown("**이 날 일정:**")
             for ev_i, ev in day_events_sel:
@@ -711,6 +730,7 @@ def page_my_calendar():
                             st.session_state.cal_selected_ev_idx = ev_i
                         st.rerun()
 
+                # 편집 폼 (선택된 이벤트)
                 if is_sel:
                     try:
                         s_d_obj = datetime.strptime(ev["start"].split()[0], "%Y-%m-%d").date()
@@ -760,6 +780,7 @@ def page_my_calendar():
                         st.session_state.cal_selected_ev_idx = None
                         st.rerun()
 
+        # 새 일정 추가 폼
         st.markdown(f"**➕ {active_date.day}일 새 일정 추가**")
         with st.form("event_form"):
             ev_title = st.text_input("일정 제목")
@@ -793,138 +814,108 @@ def page_my_calendar():
             st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("⚙️ 고정 시간표 및 휴강 관리", type="secondary", use_container_width=True):
+    if st.button("⚙️ 고정 시간표 관리", type="secondary", use_container_width=True):
         st.session_state.app_page = "FIXED_TIMETABLE"
-        st.session_state.tt_selected_id = None
         st.rerun()
 
 
 # ════════════════════════════════════════════════
-# 고정 시간표 및 휴강 관리
+# 고정 시간표
 # ════════════════════════════════════════════════
 def page_fixed_timetable():
     h1, h2 = st.columns([5, 2])
     with h2:
         if st.button("달력 보기", use_container_width=True):
             st.session_state.app_page = "MY_CALENDAR"
-            st.session_state.tt_selected_id = None
             st.rerun()
     with h1:
-        st.title("🕞 고정 시간표 및 휴강 관리")
+        st.title("🕞 고정 시간표 목록")
 
-    # 레이아웃을 좌우 분할하여 왼쪽은 고정시간표 등록, 오른쪽은 예외(휴강일) 등록으로 배치
-    tab_tt, tab_except = st.tabs(["📋 고정 시간표 관리", "🌴 고정 일정 예외(휴강) 설정"])
-
-    with tab_tt:
-        with st.expander("➕ 고정 일정 추가", expanded=st.session_state.fixed_expander_open):
-            f_title = st.text_input("일정 제목", key="ft_title")
-            f_day   = st.selectbox("요일", ["월","화","수","목","금","토","일"], key="ft_day")
-            f_start = st.text_input("시작 시각 (예: 09:00)", value="09:00", key="ft_start")
-            f_end   = st.text_input("종료 시각 (예: 12:00)", value="12:00", key="ft_end")
-            if st.button("저장", key="ft_save", type="primary", use_container_width=True):
-                if f_title:
-                    db_save_timetable_entry(st.session_state.user_id, {
-                        "title": f_title, "day": f_day,
-                        "start": f_start, "end": f_end, "color": get_random_color(),
-                    })
-                    st.session_state.fixed_expander_open = False
-                    st.session_state.data_loaded = False
-                    load_user_data()
-                    st.rerun()
-                else:
-                    st.warning("일정 제목을 입력해주세요.")
-
-        if st.session_state.my_timetable:
-            st.markdown("### 📋 등록된 고정 일정")
-            day_order = {"월": 0, "화": 1, "수": 2, "목": 3, "금": 4, "토": 5, "일": 6}
-            sorted_timetable = sorted(
-                st.session_state.my_timetable,
-                key=lambda x: (day_order.get(x["day"], 7), x["start"])
-            )
-
-            for ti, t in enumerate(sorted_timetable):
-                t_id = t.get("id") or f"tt_idx_{ti}"
-                is_editing = (st.session_state.tt_selected_id == t_id)
-                
-                col_a, col_edit, col_del = st.columns([5, 1, 1])
-                with col_a:
-                    st.markdown(
-                        f"<div style='background-color:{t.get('color','#BBDEFB')};padding:8px;"
-                        f"border-radius:5px;margin-bottom:4px;color:#333;font-size:12px;'>"
-                        f"<b>{t['title']}</b> | {t['day']}요일 {t['start']} ~ {t['end']}</div>",
-                        unsafe_allow_html=True
-                    )
-                with col_edit:
-                    edit_lbl = "✖" if is_editing else "✏️"
-                    if st.button(edit_lbl, key=f"edit_btn_{t_id}", use_container_width=True):
-                        st.session_state.tt_selected_id = None if is_editing else t_id
-                        st.rerun()
-                with col_del:
-                    if st.button("🗑️", key=f"del_tt_{t_id}", use_container_width=True):
-                        if t.get("id"):
-                            db_delete_timetable_entry(t["id"])
-                        st.session_state.my_timetable = [item for item in st.session_state.my_timetable if item.get("id") != t.get("id")]
-                        if st.session_state.tt_selected_id == t_id:
-                            st.session_state.tt_selected_id = None
-                        st.rerun()
-
-                if is_editing:
-                    with st.form(f"edit_tt_form_{t_id}"):
-                        edit_title = st.text_input("일정 제목", value=t["title"])
-                        edit_day   = st.selectbox("요일", ["월","화","수","목","금","토","일"], index=["월","화","수","목","금","토","일"].index(t["day"]))
-                        c1, c2     = st.columns(2)
-                        edit_start = c1.text_input("시작 시각", value=t["start"])
-                        edit_end   = c2.text_input("종료 시각", value=t["end"])
-                        
-                        sub_c1, sub_c2 = st.columns(2)
-                        if sub_c1.form_submit_button("💾 수정 완료", use_container_width=True):
-                            if edit_title:
-                                updated_tt = {
-                                    "id": t.get("id"),
-                                    "title": edit_title,
-                                    "day": edit_day,
-                                    "start": edit_start,
-                                    "end": edit_end,
-                                    "color": t.get("color", get_random_color())
-                                }
-                                db_save_timetable_entry(st.session_state.user_id, updated_tt)
-                                st.session_state.data_loaded = False
-                                load_user_data()
-                                st.session_state.tt_selected_id = None
-                                st.rerun()
-                            else:
-                                st.warning("일정 제목을 입력해주세요.")
-                        if sub_c2.form_submit_button("취소", use_container_width=True):
-                            st.session_state.tt_selected_id = None
-                            st.rerun()
-
-    with tab_except:
-        st.markdown("**💡 특정 날짜에 휴강이나 개인 사정이 생겼나요?**")
-        st.write("아래에 날짜를 지정해 두면, 그룹 방에서 시간을 대조할 때 해당 날짜는 고정 시간표를 제외하고 계산해 줍니다.")
-        
-        exc_date = st.date_input("📆 고정 일정 제외할 날짜 선택", value=datetime.now().date())
-        if st.button("🌴 해당 날짜를 고정 일정에서 제외하기", type="secondary", use_container_width=True):
-            exc_str = exc_date.strftime("%Y-%m-%d")
-            if exc_str not in st.session_state.my_exceptions:
-                db_add_timetable_exception(st.session_state.user_id, exc_str)
+    with st.expander("➕ 고정 일정 추가", expanded=st.session_state.fixed_expander_open):
+        f_title = st.text_input("일정 제목", key="ft_title")
+        f_day   = st.selectbox("요일", ["월","화","수","목","금","토","일"], key="ft_day")
+        f_start = st.text_input("시작 시각 (예: 09:00)", value="09:00", key="ft_start")
+        f_end   = st.text_input("종료 시각 (예: 12:00)", value="12:00", key="ft_end")
+        if st.button("저장", key="ft_save", type="primary", use_container_width=True):
+            if f_title:
+                db_save_timetable_entry(st.session_state.user_id, {
+                    "title": f_title, "day": f_day,
+                    "start": f_start, "end": f_end, "color": get_random_color(),
+                })
+                st.session_state.fixed_expander_open = False
                 st.session_state.data_loaded = False
                 load_user_data()
-                st.success(f"✅ {exc_str}이 고정 일정 예외일(휴강)로 등록되었습니다.")
                 st.rerun()
             else:
-                st.warning("이미 예외 날짜로 등록되어 있습니다.")
+                st.warning("일정 제목을 입력해주세요.")
 
-        if st.session_state.my_exceptions:
-            st.markdown("---")
-            st.markdown("##### 📌 등록된 고정 일정 제외 날짜(휴강일)")
-            for ex_date in sorted(st.session_state.my_exceptions):
-                ec1, ec2 = st.columns([5, 1])
-                ec1.markdown(f"<div style='padding:6px; background:#ECEFF1; border-radius:4px; font-size:13px;'>🌴 <b>{ex_date}</b> (이 날은 고정 시간표 차감 안 함)</div>", unsafe_allow_html=True)
-                if ec2.button("삭제", key=f"del_ex_{ex_date}", use_container_width=True):
-                    db_delete_timetable_exception(st.session_state.user_id, ex_date)
+    if st.session_state.my_timetable:
+        st.markdown("### 📋 등록된 고정 일정")
+        for ti, t in enumerate(st.session_state.my_timetable):
+            col_a, col_b = st.columns([5, 2])
+            with col_a:
+                st.markdown(
+                    f"<div style='background-color:{t.get('color','#BBDEFB')};padding:8px;"
+                    f"border-radius:5px;margin-bottom:4px;color:#333;font-size:12px;'>"
+                    f"<b>{t['title']}</b> | {t['day']}요일 {t['start']} ~ {t['end']}</div>",
+                    unsafe_allow_html=True
+                )
+            with col_b:
+                if st.button("🗑️", key=f"del_tt_{ti}", use_container_width=True):
+                    if t.get("id"):
+                        db_delete_timetable_entry(t["id"])
+                    st.session_state.my_timetable.pop(ti)
+                    st.rerun()
+
+    # ── 개편 사항: 특정 날짜 고정 일정 제외 UI 추가 ──
+    st.markdown("---")
+    st.subheader("🚫 특정 날짜 고정 일정 제외 (휴강/예외 등록)")
+    
+    with st.expander("📅 예외 날짜 등록하기", expanded=False):
+        chosen_date = st.date_input("제외할 날짜 선택", value=datetime.now().date(), key="ex_date_picker")
+        
+        # 선택된 날짜의 요일 구하기
+        weekday_kr = ["월","화","수","목","금","토","일"][chosen_date.weekday()]
+        st.caption(f"선택한 날짜는 **{weekday_kr}요일**입니다.")
+        
+        # 해당 요일에 해당하는 고정 일정 필터링
+        available_options = [t for t in st.session_state.my_timetable if t["day"] == weekday_kr]
+        
+        if not available_options:
+            st.info(f"{weekday_kr}요일에 등록된 고정 일정이 없습니다.")
+        else:
+            # 선택 박스 구성을 위해 라벨 포맷 생성
+            option_labels = [f"{t['title']} ({t['start']}~{t['end']})" for t in available_options]
+            selected_opt_idx = st.selectbox("제외할 고정 일정 선택", range(len(available_options)), format_func=lambda x: option_labels[x])
+            target_timetable = available_options[selected_opt_idx]
+            
+            if st.button("❌ 이 날짜에서 일정 제외하기", type="primary", use_container_width=True):
+                success = db_save_exception(
+                    st.session_state.user_id, 
+                    chosen_date, 
+                    target_timetable.get("id"), 
+                    target_timetable["title"]
+                )
+                if success:
+                    st.success(f"✅ {chosen_date}에 '{target_timetable['title']}' 일정이 제외되었습니다.")
                     st.session_state.data_loaded = False
                     load_user_data()
                     st.rerun()
+
+    # 등록된 예외 리스트 보기 및 삭제
+    if st.session_state.my_exceptions:
+        st.markdown("##### 📋 등록된 제외 날짜 목록")
+        for ex in st.session_state.my_exceptions:
+            ec1, ec2 = st.columns([5, 2])
+            with ec1:
+                st.markdown(f"• **{ex['exception_date']}** : {ex['title']} (제외됨)")
+            with ec2:
+                if st.button("복구(삭제)", key=f"del_ex_{ex['id']}", use_container_width=True):
+                    db_delete_exception(ex['id'])
+                    st.session_state.data_loaded = False
+                    load_user_data()
+                    st.rerun()
+
 
     st.write("### 📊 일주일 타임라인 (15분 단위)")
     table_html = (
@@ -1027,7 +1018,7 @@ def page_group_list():
 
 
 # ════════════════════════════════════════════════
-# 그룹 방 (가용 시간 계산 로직 변경 포함)
+# 그룹 방 – 모바일 최적화 버전
 # ════════════════════════════════════════════════
 def slot_to_time(i):
     return f"{i // 4:02d}:{(i % 4) * 15:02d}"
@@ -1043,20 +1034,15 @@ def compute_free_slots(g_members, year, month, day, time_start_h, time_end_h):
         slots[i] = True
 
     for name, m_data in g_members.items():
-        # ★★★ 핵심 피처: 대조하려는 날짜(d_str)가 유저의 휴강일(exceptions)에 포함되지 않은 경우에만 고정시간표를 반영!
-        user_exceptions = m_data.get("exceptions", [])
-        if d_str not in user_exceptions:
-            for t in m_data.get("timetable", []):
-                if t["day"] == w_str:
-                    try:
-                        sh, sm = map(int, t["start"].split(":"))
-                        eh, em = map(int, t["end"].split(":"))
-                        for i in range(sh * 4 + sm // 15, eh * 4 + em // 15):
-                            slots[i] = False
-                    except Exception:
-                        pass
-        
-        # 개인 일주는 휴강 여부와 관계없이 무조건 불가 시간으로 채움
+        for t in m_data.get("timetable", []):
+            if t["day"] == w_str:
+                try:
+                    sh, sm = map(int, t["start"].split(":"))
+                    eh, em = map(int, t["end"].split(":"))
+                    for i in range(sh * 4 + sm // 15, eh * 4 + em // 15):
+                        slots[i] = False
+                except Exception:
+                    pass
         for ev in m_data.get("events", []):
             if ev["start"].split()[0] <= d_str <= ev["end"].split()[0]:
                 try:
@@ -1070,6 +1056,7 @@ def compute_free_slots(g_members, year, month, day, time_start_h, time_end_h):
 
 
 def build_group_calendar_html(year, month, start_d, end_d, date_colors, selected_day_str=None):
+    """그룹 결과 달력 – 순수 HTML CSS Grid"""
     cal_matrix = calendar.monthcalendar(year, month)
     day_names   = ["일","월","화","수","목","금","토"]
     hdr_colors  = ["#E53935","#555","#555","#555","#555","#555","#1565C0"]
@@ -1228,6 +1215,7 @@ def page_group_room():
         "🟢 가능 | 🔴 불가 | ⚪ 범위 외</div>", unsafe_allow_html=True
     )
 
+    # ── 월별 CSS Grid 달력 렌더링 ──
     render_year, render_month = start_d.year, start_d.month
     end_year, end_month       = end_d.year, end_d.month
 
@@ -1246,6 +1234,7 @@ def page_group_room():
             render_month = 1
             render_year += 1
 
+    # ── 날짜 선택 (모바일 네이티브) ──
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("**📌 날짜를 선택하면 가능 시간대를 분석해요**")
 
@@ -1276,6 +1265,7 @@ def page_group_room():
             st.session_state.grp_selected_day = new_sel
             st.rerun()
 
+    # ── 선택된 날짜 상세 분석 ──
     if sel_day and sel_day in colors:
         slots = st.session_state.grp_free_slots.get(sel_day, [False] * 96)
         sy, sm, sd = map(int, sel_day.split("-"))
@@ -1283,6 +1273,7 @@ def page_group_room():
         st.markdown("---")
         st.markdown(f"### 📊 {sy}년 {sm}월 {sd}일 분석")
 
+        # 시간대 바 차트
         bar_rows = []
         for hour in range(24):
             cells = "".join(
@@ -1365,6 +1356,7 @@ def page_group_room():
                     st.success(f"🎉 약속 확정! {sy}년 {sm}월 {sd}일 "
                                f"{slot_to_time(rs)} - {slot_to_time(re)}")
 
+    # ── 요일별 공통 가용 시간표 ──
     st.markdown("---")
     st.subheader("📊 요일별 공통 가용 시간표")
     w_days      = ["월","화","수","목","금","토","일"]
