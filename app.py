@@ -659,7 +659,7 @@ def page_my_calendar():
                     )
                 with col_btn:
                     if item["is_exception"]:
-                        if st.button("✖", key=f"del_ex_btn_{item_id}", use_container_width=True):
+                        if st.button("🗑️ 삭제", key=f"del_ex_btn_{item_id}", use_container_width=True):
                             if db_delete_timetable_exception(item["ex_id"]):
                                 st.session_state.grp_date_colors = None
                                 load_user_data()
