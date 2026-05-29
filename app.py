@@ -771,6 +771,7 @@ def page_my_calendar():
                         if st.button("✖", key=f"del_ex_btn_{item_id}", use_container_width=True):
                             if db_delete_timetable_exception(item["ex_id"]):
                                 st.session_state.data_loaded = False
+                                st.session_state.grp_date_colors = None  # 예외 삭제 시 대조 캐시 데이터도 즉시 초기화
                                 load_user_data()
                                 st.rerun()
                     else:
@@ -979,6 +980,7 @@ def page_fixed_timetable():
                         else:
                             st.session_state.ft_success_msg = f"✅ [{exception_date}] 해당 고정 일정에 대한 예외 처리가 정상 저장되었습니다!"
                             st.session_state.data_loaded = False
+                            st.session_state.grp_date_colors = None  # 예외 추가 시에도 대조 캐시 초기화
                             load_user_data()
                             st.rerun()
 
@@ -1006,6 +1008,7 @@ def page_fixed_timetable():
                         st.session_state.tt_selected_id = None
                     st.session_state.ft_success_msg = None
                     st.session_state.data_loaded = False
+                    st.session_state.grp_date_colors = None  # 고정 시간표 항목 삭제 시에도 캐시 초기화
                     load_user_data()
                     st.rerun()
 
@@ -1090,7 +1093,7 @@ def page_group_list():
                 else:
                     st.error("유효하지 않은 코드입니다.")
             else:
-                st.warning("코드와 닉네임을 입력해주세요.")
+                st.warning("코드 and 닉네임을 입력해주세요.")
 
     st.markdown("---")
     st.subheader("참여 중인 방")
@@ -1128,10 +1131,8 @@ def compute_free_slots(g_members, year, month, day, time_start_h, time_end_h):
     for name, m_data in g_members.items():
         for t in m_data.get("timetable", []):
             if t["day"] == w_str:
-                # 🛠️ [기능 수정] 예외 목록 반영 로직 고도화 및 완전 수정 
-                # t["exceptions"] 내부 원소들이 문자열이나 딕셔너리 포맷일 때 유연하게 매칭되도록 처리
                 if any(str(ex) == d_str for ex in t.get("exceptions", [])):
-                    continue # 예외일정이 등록된 날은 고정시간표를 무시(반영하지 않고 빈 상태로 패스)합니다.
+                    continue 
                 try:
                     sh, sm = map(int, t["start"].split(":"))
                     eh, em = map(int, t["end"].split(":"))
