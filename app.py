@@ -19,31 +19,41 @@ supabase = get_supabase()
 st.set_page_config(page_title="When We Meet", page_icon="📅", layout="wide")
 
 # ════════════════════════════════════════════════
-# 모바일 달력 가로 스크롤 및 잘림 방지 CSS (이 부분만 확실하게 고쳤습니다!)
+# 모바일 화면 맞춤형 달력 CSS (가로 스크롤 없음, 무조건 한 화면 피팅)
 # ════════════════════════════════════════════════
 st.markdown("""
 <style>
-/* 모바일 화면에서 7열(달력) 컬럼이 세로로 쌓이지 않고 가로로 유지되도록 설정 */
 @media (max-width: 768px) {
+    /* 1. 7열 달력 가로 블록을 무조건 화면 폭(100%)에 맞추고 스크롤 차단 */
     div[data-testid="stHorizontalBlock"]:has(> div:nth-child(7)) {
         flex-direction: row !important;
         flex-wrap: nowrap !important;
-        overflow-x: auto !important; /* 핵심: 화면이 좁으면 가로 스크롤(스와이프) 가능하게 허용 */
-        -webkit-overflow-scrolling: touch !important; /* 모바일 부드러운 터치 스크롤 */
+        overflow-x: hidden !important; /* 가로 스크롤 원천 봉쇄 */
         gap: 2px !important;
         width: 100% !important;
-        padding-bottom: 8px !important; /* 하단 스크롤바 공간 여유 확보 */
     }
+    
+    /* 2. 각 요일 컬럼을 정확히 7분의 1 크기로 균등 배분 (축소 제한 해제) */
     div[data-testid="stHorizontalBlock"]:has(> div:nth-child(7)) > div[data-testid="column"] {
-        min-width: 55px !important; /* 날짜 글씨나 버튼이 잘리지 않을 최소 너비 */
-        flex: 0 0 auto !important;
-        padding: 0 1px !important;
+        flex: 1 1 0% !important;
+        min-width: 0 !important; 
+        padding: 0 !important;
+        margin: 0 !important;
     }
-    /* 달력 안쪽 버튼 사이즈 최적화 */
+    
+    /* 3. 칸 내부 컴포넌트 여백 및 글씨 크기 최적화 (안 잘리게 방어) */
+    div[data-testid="stHorizontalBlock"]:has(> div:nth-child(7)) div {
+        font-size: 10px !important;
+    }
+    
+    /* 4. 스트림릿 버튼 여백을 완전히 깎아서 칸 안에 쏙 들어가게 세팅 */
     div[data-testid="stHorizontalBlock"]:has(> div:nth-child(7)) button {
         padding: 0 !important;
-        font-size: 11px !important;
-        min-height: 28px !important;
+        min-height: 24px !important;
+        line-height: 24px !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has(> div:nth-child(7)) button p {
+        font-size: 9px !important;
     }
 }
 </style>
@@ -581,7 +591,6 @@ def page_my_calendar():
                         st.session_state.editing_event_idx = None
                     st.rerun()
 
-        # 구조 유지: 선택된 날짜가 있는 주(Week) 바로 아래에 상세 패널 등장
         if active_day and active_day in week:
             add_day = active_day
             date_str_sel   = f"{cur_year}-{cur_month:02d}-{add_day:02d}"
@@ -1035,7 +1044,6 @@ def page_group_room():
     render_year, render_month = start_d.year, start_d.month
     end_year, end_month = end_d.year, end_d.month
 
-    # ── 헬퍼: 선택된 날짜의 상세 패널 렌더 ──────────────
     def render_day_detail(sel_day):
         slots = st.session_state.grp_free_slots.get(sel_day, [False] * 96)
         year_s, month_s, day_s = map(int, sel_day.split("-"))
@@ -1134,7 +1142,6 @@ def page_group_room():
                     st.success(f"🎉 약속 확정! {year_s}년 {month_s}월 {day_s}일 "
                                f"{slot_to_time(rs)} - {slot_to_time(re)}")
 
-    # ── 월별 달력 렌더링 ──
     while (render_year, render_month) <= (end_year, end_month):
         st.markdown(f"##### 📅 {render_year}년 {render_month}월")
         cal_matrix = calendar.monthcalendar(render_year, render_month)
@@ -1186,7 +1193,6 @@ def page_group_room():
                             st.session_state.grp_selected_day = None if is_sel else d_key
                             st.rerun()
 
-            # 구조 유지: 날짜 버튼을 누른 주(Week) 바로 밑에 분석 패널 등장
             sel = st.session_state.grp_selected_day
             if sel:
                 sp = sel.split("-")
@@ -1199,7 +1205,6 @@ def page_group_room():
             render_month = 1
             render_year += 1
 
-    # ── 공통 시간표 뷰 ─────────────────────────
     st.markdown("---")
     st.subheader("📊 요일별 공통 가용 시간표")
     t_start = st.session_state.get("grp_time_start", 9)
