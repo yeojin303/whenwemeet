@@ -35,27 +35,31 @@ def hash_password(pw: str) -> str:
 
 
 # ════════════════════════════════════════════════
-# 캘린더 강제 7열 고정 CSS 주입
+# 달력 전용 안전 스타일 (다른 UI 방해 금지 + 가로 벙벙함 방지)
 # ════════════════════════════════════════════════
 st.html("""
 <style>
-    /* 모바일 환경에서도 columns가 아래로 떨어지지 않고 가로 7열 유지되도록 강제 설정 */
-    div[data-testid="stHorizontalBlock"] {
-        display: grid !important;
-        grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
-        gap: 6px !important;
-    }
-    div[data-testid="stColumn"] {
+    /* 오직 달력 내부의 7열 컴포넌트만 타겟팅 */
+    .calendar-container div[data-testid="stHorizontalBlock"] {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
         width: 100% !important;
-        max-width: 100% !important;
-        flex: unset !important;
+        max-width: 600px !important; /* 가로로 무작정 커지는 것 방지 */
+        margin: 0 auto !important;    /* 중앙 정렬 */
     }
-    /* 버튼 텍스트 정렬 및 조절 */
-    div[data-testid="stButton"] button {
-        padding: 6px 2px !important;
-        min-height: 50px !important;
-        font-size: 13px !important;
+    .calendar-container div[data-testid="stColumn"] {
+        width: calc(100% / 7) !important;
+        min-width: calc(100% / 7) !important;
+        flex: 1 1 0% !important;
+        padding: 2px !important;
+    }
+    /* 달력 내부 버튼 텍스트 최적화 */
+    .calendar-container div[data-testid="stButton"] button {
+        padding: 4px 1px !important;
+        font-size: 12px !important;
         white-space: pre-line !important;
+        min-height: 45px !important;
     }
 </style>
 """)
@@ -300,7 +304,7 @@ def require_login():
 
 
 # ════════════════════════════════════════════════
-# 공통 상단 헤더 (로그인 후 페이지용)
+# 공통 상단 헤더
 # ════════════════════════════════════════════════
 def render_header(title, back_page=None, back_label="← 홈으로"):
     c1, c2 = st.columns([5, 2])
@@ -416,7 +420,7 @@ def page_account():
 
 
 # ════════════════════════════════════════════════
-# 홈 화면 (가로 7열 완전 고정)
+# 홈 화면 (초기 안정 버전 원상복구)
 # ════════════════════════════════════════════════
 def page_home():
     c1, c2 = st.columns([5, 2])
@@ -431,17 +435,17 @@ def page_home():
         st.title("🤝 When We Meet")
 
     now = datetime.now()
-    st.subheader(f"📅 {now.year}년 {now.month}월 달력")
+    st.subheader(f"📅 {now.year}년 {now.month}월")
 
     cal_matrix = calendar.monthcalendar(now.year, now.month)
     
-    # 상단 요일 타이틀 (강제 7열)
+    # 홈 화면 달력은 안전 클래스로 감싸 모바일 깨짐과 가로 번짐 둘 다 방지
+    st.markdown('<div class="calendar-container">', unsafe_allow_html=True)
     cols_header = st.columns(7)
     days_labels = ["일", "월", "화", "수", "목", "금", "토"]
     for i, l in enumerate(days_labels):
         cols_header[i].markdown(f"<p style='text-align:center; font-weight:bold; margin:0;'>{l}</p>", unsafe_allow_html=True)
 
-    # 일자 그리드 출력 (강제 7열 고정 CSS 연동)
     for idx_w, week in enumerate(cal_matrix):
         cols_week = st.columns(7)
         for col_idx, day_num in enumerate(week):
@@ -452,12 +456,9 @@ def page_home():
                     cols_week[col_idx].button(f"{day_num}", key=f"home_day_{day_num}_{idx_w}", use_container_width=True)
             else:
                 cols_week[col_idx].markdown("<p style='text-align:center; color:#ccc; margin:0;'>-</p>", unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("---")
-    
-    # 하단 메뉴 이동 버튼들 (얘네는 7열 그리드에 묶이지 않도록 별도 독립 가로 배치 처리)
-    st.html("<style>div.nav-box { display: flex; gap: 10px; width: 100%; }</style>")
     b1, b2 = st.columns(2)
     with b1:
         if st.button("📆 나의 일정 관리", type="primary", use_container_width=True):
@@ -470,7 +471,7 @@ def page_home():
 
 
 # ════════════════════════════════════════════════
-# 나의 일정 (가로 7열 완전 고정 달력 + 하단 상세 결합)
+# 나의 일정 (달력 전용 가로폭+모바일 대응 보완)
 # ════════════════════════════════════════════════
 def page_my_calendar():
     h1, h2 = st.columns([5, 2])
@@ -514,13 +515,13 @@ def page_my_calendar():
     cal_matrix = calendar.monthcalendar(cur_year, cur_month)
     active_day = st.session_state.get("active_add_day")
 
-    # 상단 요일 타이틀 (강제 7열 고정)
+    # 달력 틀만 격자 유지 클래스로 안전하게 감싸기
+    st.markdown('<div class="calendar-container">', unsafe_allow_html=True)
     cols_header = st.columns(7)
     day_names = ["일", "월", "화", "수", "목", "금", "토"]
     for i, dn in enumerate(day_names):
         cols_header[i].markdown(f"<p style='text-align:center; font-weight:bold; margin:0;'>{dn}</p>", unsafe_allow_html=True)
 
-    # 일자 버튼 그리드 (강제 7열 고정)
     for idx_w, week in enumerate(cal_matrix):
         cols_week = st.columns(7)
         for col_idx, day_num in enumerate(week):
@@ -553,8 +554,9 @@ def page_my_calendar():
                     st.rerun()
             else:
                 cols_week[col_idx].markdown("<p style='text-align:center; color:#eee; margin:0;'>-</p>", unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    # 하단 일자별 상세 설정 영역
+    # 하단 상세 폼 영역 (이 부분은 일반 레이아웃이므로 달력 격자 바깥에 둡니다)
     if active_day:
         add_day = active_day
         date_str_sel   = f"{cur_year}-{cur_month:02d}-{add_day:02d}"
@@ -822,7 +824,7 @@ def page_group_list():
 
 
 # ════════════════════════════════════════════════
-# 그룹 방 (가로 7열 완전 고정 달력 + 상세 연동)
+# 그룹 방 (달력 전용 가로폭+모바일 대응 보완)
 # ════════════════════════════════════════════════
 def slot_to_time(i):
     return f"{i // 4:02d}:{(i % 4) * 15:02d}"
@@ -981,7 +983,7 @@ def page_group_room():
     render_year, render_month = start_d.year, start_d.month
     end_year, end_month = end_d.year, end_d.month
 
-    # 상세 분석 렌더링용 헬퍼 내부 함수
+    # 상세 분석 렌더링 헬퍼 함수
     def render_day_detail(sel_day):
         slots = st.session_state.grp_free_slots.get(sel_day, [False] * 96)
         year_s, month_s, day_s = map(int, sel_day.split("-"))
@@ -1074,17 +1076,16 @@ def page_group_room():
                     st.success(f"🎉 약속 확정! {year_s}년 {month_s}월 {day_s}일 "
                                f"{slot_to_time(rs)} - {slot_to_time(re)}")
 
-    # 그룹 달력 반복 루프 (강제 7열 고정 구조)
+    # 그룹 매칭 달력도 격자 유지 클래스로 안전 보호
     while (render_year, render_month) <= (end_year, end_month):
         st.markdown(f"##### 📅 {render_year}년 {render_month}월")
         cal_matrix = calendar.monthcalendar(render_year, render_month)
 
-        # 요일 헤더
+        st.markdown('<div class="calendar-container">', unsafe_allow_html=True)
         cols_header = st.columns(7)
         for i, dn in enumerate(["일", "월", "화", "수", "목", "금", "토"]):
             cols_header[i].markdown(f"<p style='text-align:center; font-weight:bold; margin:0;'>{dn}</p>", unsafe_allow_html=True)
 
-        # 주 단위 루프
         for idx_w, week in enumerate(cal_matrix):
             cols_week = st.columns(7)
             for col_idx, d_num in enumerate(week):
@@ -1104,15 +1105,14 @@ def page_group_room():
                         lbl += " ✔"
 
                     btn_type = "primary" if is_sel else "secondary"
-                    
                     if cols_week[col_idx].button(lbl, key=f"grp_cal_day_{d_key}_{idx_w}", use_container_width=True, type=btn_type):
                         if in_range:
                             st.session_state.grp_selected_day = None if is_sel else d_key
                             st.rerun()
                 else:
                     cols_week[col_idx].markdown("<p style='text-align:center; color:#eee; margin:0;'>-</p>", unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-        # 하단 상세 판넬 연동 출력
         sel = st.session_state.grp_selected_day
         if sel:
             sp = sel.split("-")
@@ -1125,7 +1125,6 @@ def page_group_room():
             render_month = 1
             render_year += 1
 
-    # 요일별 고정 시간표 대조 타임라인
     st.markdown("---")
     st.subheader("📊 요일별 공통 가용 시간표")
     t_start = st.session_state.get("grp_time_start", 9)
