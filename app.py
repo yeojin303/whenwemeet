@@ -318,6 +318,7 @@ def init_session():
         "grp_end_d": None,
         "grp_time_start": 9,
         "grp_time_end": 21,
+        "ft_success_msg": None  # 고정 시간표 예외 등록 완료 메시지용 세션
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -431,7 +432,6 @@ def build_calendar_html(year, month, events, selected_date_str=None):
 
             today_lbl = '<span class="wwm-today-lbl">Today</span>' if is_today else ""
             
-            # 🌟 수정한 부분: 숫자 옆에 중복으로 뜨던 태양 이모티콘(🌞)을 지웠습니다!
             html += (
                 f'<div class="{cls}">'
                 f'<span class="wwm-dnum" style="color:{num_color};">{day_num}</span>'
@@ -655,6 +655,9 @@ def page_my_calendar():
             (i, ev) for i, ev in enumerate(st.session_state.my_events)
             if ev["start"].split()[0] <= active_str <= ev["end"].split()[0]
         ]
+        
+        # 🛠️ [수정 완료] 일정을 시작 시간순(Ascending)으로 정렬해 줍니다.
+        day_events_sel = sorted(day_events_sel, key=lambda x: x[1]["start"])
 
         st.markdown("---")
         hc1, hc2 = st.columns([5, 1])
@@ -736,14 +739,14 @@ def page_my_calendar():
                             "color": ev.get("color", get_random_color()),
                         }
                         db_save_event(st.session_state.user_id, updated)
-                        st.session_state.my_events[ev_i] = updated
+                        st.session_state.data_loaded = False
                         st.session_state.cal_selected_ev_id  = None
                         st.session_state.cal_selected_ev_idx = None
                         st.rerun()
                     elif deleted:
                         if ev.get("id"):
                             db_delete_event(ev["id"])
-                        st.session_state.my_events.pop(ev_i)
+                        st.session_state.data_loaded = False
                         st.session_state.cal_selected_ev_id  = None
                         st.session_state.cal_selected_ev_idx = None
                         st.rerun()
@@ -777,8 +780,8 @@ def page_my_calendar():
                 }
                 db_save_event(st.session_state.user_id, new_ev)
                 st.session_state.data_loaded = False
-                load_user_data()
-                st.session_state.cal_selected_date = None
+                # 🛠️ [수정 완료] 저장 후에도 날짜 선택 화면(창)을 강제로 닫지 않고 결과 확인이 가능하게 유지합니다.
+                st.toast("✅ 일정이 성공적으로 추가되었습니다!")
                 st.rerun()
         elif do_cancel:
             st.session_state.cal_selected_date = None
@@ -798,9 +801,16 @@ def page_fixed_timetable():
     with h2:
         if st.button("달력 보기", use_container_width=True):
             st.session_state.app_page = "MY_CALENDAR"
+            # 페이지 전환 시 성공 메시지 청소
+            st.session_state.ft_success_msg = None
             st.rerun()
     with h1:
         st.title("🕞 고정 시간표 및 예외 관리")
+
+    # 🛠️ [수정 완료] 예외 등록 성공 후 피드백 메시지가 새로고침 후에도 유지되어 노출되도록 배치
+    if st.session_state.ft_success_msg:
+        st.success(st.session_state.ft_success_msg)
+        # 1회 노출 후 리셋 원할 경우 주석 제거 가능하지만, 유지하고 다른 동작 시 사라지도록 처리함.
 
     with st.expander("➕ 고정 일정 추가", expanded=st.session_state.fixed_expander_open):
         f_title = st.text_input("일정 제목", key="ft_title")
@@ -815,6 +825,7 @@ def page_fixed_timetable():
                 })
                 st.session_state.fixed_expander_open = False
                 st.session_state.data_loaded = False
+                st.session_state.ft_success_msg = None
                 load_user_data()
                 st.rerun()
             else:
@@ -842,7 +853,8 @@ def page_fixed_timetable():
                 if err:
                     st.error(f"예외 등록 오류: {err}")
                 else:
-                    st.success("✅ 선택하신 고정 일정에 대한 예외(휴강) 처리가 정상적으로 저장되었습니다.")
+                    # 🛠️ [수정 완료] 세션에 성공 메시지를 담고 리런하여 정상 노출을 보장합니다.
+                    st.session_state.ft_success_msg = f"✅ [{exception_date}] 해당 고정 일정에 대한 예외(휴강) 처리가 정상 저장되었습니다!"
                     st.session_state.data_loaded = False
                     st.rerun()
 
@@ -862,6 +874,7 @@ def page_fixed_timetable():
                     if t.get("id"):
                         db_delete_timetable_entry(t["id"])
                     st.session_state.my_timetable.pop(ti)
+                    st.session_state.ft_success_msg = None
                     st.rerun()
 
     st.write("### 🗑️ 일주일 타임라인 (15분 단위)")
@@ -1269,15 +1282,9 @@ def page_group_room():
 
             st.markdown("##### ⏰ 시간 직접 설정하여 확정하기")
             time_options = [f"{h:02d}:{m:02d}" for h in range(24) for m in [0,15,30,45]]
-            c_c1, c_c2  = st.columns(2)
-            with c_c1:
-                custom_start = st.selectbox("시작", options=time_options,
-                                            index=time_options.index("12:00"), key=f"cstart_{sel_day}")
-            with c_c2:
-                custom_end   = st.selectbox("종료", options=time_options,
-                                            index=time_options.index("14:00"), key=f"cend_{sel_day}")
-            if st.button("🚀 커스텀 시간으로 약속 확정", use_container_width=True,
-                         type="primary", key=f"custom_confirm_{sel_day}"):
+            custom_start = st.selectbox("시작", options=time_options, index=time_options.index("12:00"), key=f"cstart_{sel_day}")
+            custom_end   = st.selectbox("종료", options=time_options, index=time_options.index("14:00"), key=f"cend_{sel_day}")
+            if st.button("🚀 커스텀 시간으로 약속 확정", use_container_width=True, type="primary", key=f"custom_confirm_{sel_day}"):
                 if custom_start >= custom_end:
                     st.error("종료 시간은 시작 시간보다 늦어야 합니다.")
                 else:
