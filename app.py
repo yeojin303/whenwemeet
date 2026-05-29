@@ -193,17 +193,9 @@ def db_save_timetable_entry(user_id, entry):
 
 def db_delete_timetable_entry(entry_id):
     try:
-        supabase.table("timetable_exceptions").delete().eq("timetable_id", entry_id).execute()
         supabase.table("timetable").delete().eq("id", entry_id).execute()
     except Exception as e:
         st.error(f"시간표 삭제 오류: {e}")
-
-def db_check_exception_exists(timetable_id, exception_date):
-    try:
-        res = supabase.table("timetable_exceptions").select("id").eq("timetable_id", timetable_id).eq("exception_date", exception_date).execute()
-        return len(res.data) > 0
-    except Exception:
-        return False
 
 def db_save_timetable_exception(timetable_id, exception_date):
     try:
@@ -214,35 +206,6 @@ def db_save_timetable_exception(timetable_id, exception_date):
         return res.data, None
     except Exception as e:
         return None, str(e)
-
-def db_delete_timetable_exception(timetable_id, exception_date):
-    try:
-        supabase.table("timetable_exceptions").delete().eq("timetable_id", timetable_id).eq("exception_date", exception_date).execute()
-        return True
-    except Exception as e:
-        st.error(f"예외 삭제 오류: {e}")
-        return False
-
-def db_get_all_exceptions(user_id):
-    try:
-        res = supabase.table("timetable").select("id, title, start_time, end_time, color, timetable_exceptions(exception_date)").eq("user_id", user_id).execute()
-        exceptions = []
-        for row in (res.data or []):
-            for exc in row.get("timetable_exceptions", []):
-                # 데이터 유효성 방어 체크 추가
-                if not exc or "exception_date" not in exc:
-                    continue
-                exceptions.append({
-                    "timetable_id": row["id"],
-                    "title": f"[예외] {row['title']}",
-                    "date": exc["exception_date"],
-                    "start": f"{exc['exception_date']} {row['start_time']}",
-                    "end": f"{exc['exception_date']} {row['end_time']}",
-                    "color": row.get("color", "#E0E0E0")
-                })
-        return exceptions
-    except Exception:
-        return []
 
 def db_get_rooms(user_id):
     try:
@@ -292,6 +255,7 @@ def db_join_room(user_id, room_code, nickname):
         st.error(f"방 입장 오류: {e}")
         return False
 
+# 예외 등록 데이터까지 같이 가져오도록 결합 조인 쿼리 개선
 def db_get_room_members(room_code):
     try:
         members_res = (
@@ -303,6 +267,7 @@ def db_get_room_members(room_code):
             uid, nick = m["user_id"], m["nickname"]
             events_raw = db_get_user_events(uid)
             
+            # 고정시간표 가져올 때 예외 테이블도 조인해서 가져오기
             tt_res = supabase.table("timetable").select("*, timetable_exceptions(exception_date)").eq("user_id", uid).execute()
             timetable_raw = tt_res.data or []
             
@@ -318,7 +283,7 @@ def db_get_room_members(room_code):
                         "day": t["day"],
                         "start": t["start_time"], 
                         "end": t["end_time"],
-                        "exceptions": [ex["exception_date"] for ex in t.get("timetable_exceptions", []) if ex and "exception_date" in ex]
+                        "exceptions": [ex["exception_date"] for ex in t.get("timetable_exceptions", [])]
                     }
                     for t in timetable_raw
                 ],
@@ -340,10 +305,11 @@ def db_get_room_info(room_code):
 # 세션 초기화
 # ════════════════════════════════════════════════
 def init_session():
+    # 실시간 오늘 날짜 연/월 반영
+    now_dt = datetime.now()
     defaults = {
         "app_page": "LOGIN",
         "my_events": [],
-        "my_exceptions": [],
         "my_timetable": [],
         "current_group_code": None,
         "my_nickname": "",
@@ -353,12 +319,12 @@ def init_session():
         "username": None,
         "data_loaded": False,
         "confirm_delete_account": False,
-        "view_year": datetime.now().year,
-        "view_month": datetime.now().month,
+        "view_year": now_dt.year,
+        "view_month": now_dt.month,
         "cal_selected_date": None,
         "cal_selected_ev_id": None,
         "cal_selected_ev_idx": None,
-        "tt_selected_id": None,
+        "tt_selected_id": None,  # 고정시간표 수정을 위한 선택 ID 세션 추가
         "grp_date_colors": None,
         "grp_free_slots": None,
         "grp_selected_day": None,
@@ -387,8 +353,6 @@ def load_user_data():
          "end": e["end_dt"], "color": e.get("color", get_random_color())}
         for e in db_get_user_events(uid)
     ]
-    
-    st.session_state.my_exceptions = db_get_all_exceptions(uid)
     
     raw_timetable = db_get_timetable(uid)
     sorted_timetable = sorted(
@@ -436,11 +400,8 @@ def render_header(title, back_page=None, back_label="← 홈으로"):
 # HTML 달력 빌더
 # ════════════════════════════════════════════════
 def build_calendar_html(year, month, events, selected_date_str=None):
-    today = datetime.now()
-    try:
-        cal_matrix = calendar.monthcalendar(year, month)
-    except Exception:
-        cal_matrix = calendar.monthcalendar(today.year, today.month)
+    today = datetime.now() # 실시간 오늘 날짜 매번 호출하여 반영
+    cal_matrix = calendar.monthcalendar(year, month)
 
     day_names   = ["일", "월", "화", "수", "목", "금", "토"]
     hdr_colors  = ["#E53935","#555","#555","#555","#555","#555","#1565C0"]
@@ -470,27 +431,15 @@ def build_calendar_html(year, month, events, selected_date_str=None):
             elif is_today:
                 cls += " wwm-cell-today"
 
-            # 데이터 정제 및 예외 안전 장치 추가
-            day_events = []
-            for ev in (events or []):
-                try:
-                    if "start" in ev and "end" in ev and ev["start"] and ev["end"]:
-                        if ev["start"].split()[0] <= date_str <= ev["end"].split()[0]:
-                            day_events.append(ev)
-                except Exception:
-                    continue
-            
-            # 시간 순서대로 정렬 안전 장치
-            try:
-                day_events = sorted(day_events, key=lambda x: x["start"].split()[1] if (" " in x["start"] and len(x["start"].split()) > 1) else x["start"])
-            except Exception:
-                pass
+            day_events = [
+                ev for ev in events
+                if ev["start"].split()[0] <= date_str <= ev["end"].split()[0]
+            ]
 
             bars = ""
             for ev in day_events[:2]:
                 c = ev.get("color", "#4D96FF")
-                title_text = ev.get("title", "일정")
-                t_s = title_text[:4] + ("…" if len(title_text) > 4 else "")
+                t_s = ev["title"][:4] + ("…" if len(ev["title"]) > 4 else "")
                 bars += f'<div class="wwm-evbar" style="background:{c};">{t_s}</div>'
             if len(day_events) > 2:
                 bars += f'<div class="wwm-more">+{len(day_events)-2}</div>'
@@ -622,7 +571,7 @@ def page_home():
     with c1:
         st.title("🤝 When We Meet")
 
-    now = datetime.now()
+    now = datetime.now() # 실시간 오늘 날짜 동적 반영
     st.subheader(f"📅 {now.year}년 {now.month}월")
 
     cal_html = build_calendar_html(now.year, now.month, [], None)
@@ -691,25 +640,15 @@ def page_my_calendar():
         sel_date_str = None
         st.session_state.cal_selected_date = None
 
-    # 데이터 안전 결합 장치 (None 방지)
-    events_list = st.session_state.my_events if st.session_state.my_events else []
-    exceptions_list = st.session_state.my_exceptions if st.session_state.my_exceptions else []
-    combined_display_events = events_list + exceptions_list
-    
-    cal_html = build_calendar_html(cur_year, cur_month, combined_display_events, sel_date_str)
+    cal_html = build_calendar_html(cur_year, cur_month, st.session_state.my_events, sel_date_str)
     st.markdown(cal_html, unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
     st.markdown("**📌 날짜를 선택하면 일정을 확인·추가할 수 있어요**")
-    try:
-        default_picker_val = sel_date_obj if sel_date_obj else date_type(cur_year, cur_month, 1)
-    except Exception:
-        default_picker_val = datetime.now().date()
-        
     picked = st.date_input(
         "날짜 선택",
-        value=default_picker_val,
+        value=sel_date_obj if sel_date_obj else date_type(cur_year, cur_month, 1),
         key="cal_date_picker",
         label_visibility="collapsed",
     )
@@ -726,34 +665,12 @@ def page_my_calendar():
         active_date = st.session_state.cal_selected_date
         active_str  = active_date.strftime("%Y-%m-%d")
 
-        # 일반 일정 필터링 안전 검증
-        day_events_sel = []
-        for i, ev in enumerate(events_list):
-            try:
-                if ev and "start" in ev and "end" in ev and ev["start"] and ev["end"]:
-                    if ev["start"].split()[0] <= active_str <= ev["end"].split()[0]:
-                        day_events_sel.append(("event", i, ev))
-            except Exception:
-                continue
+        day_events_sel = [
+            (i, ev) for i, ev in enumerate(st.session_state.my_events)
+            if ev["start"].split()[0] <= active_str <= ev["end"].split()[0]
+        ]
         
-        # 예외 일정 필터링 안전 검증
-        day_exceptions_sel = []
-        for i, ex in enumerate(exceptions_list):
-            try:
-                if ex and "date" in ex and ex["date"] == active_str:
-                    day_exceptions_sel.append(("exception", i, ex))
-            except Exception:
-                continue
-        
-        # 정렬 시 시간 파싱 예외 안전 처리 방어 코드
-        def get_sort_key(item):
-            try:
-                t_str = item[2]["start"]
-                return t_str.split()[1] if (" " in t_str and len(t_str.split()) > 1) else t_str
-            except Exception:
-                return "00:00"
-
-        combined_day_items = sorted(day_events_sel + day_exceptions_sel, key=get_sort_key)
+        day_events_sel = sorted(day_events_sel, key=lambda x: x[1]["start"])
 
         st.markdown("---")
         hc1, hc2 = st.columns([5, 1])
@@ -766,31 +683,18 @@ def page_my_calendar():
                 st.session_state.cal_selected_ev_idx = None
                 st.rerun()
 
-        if combined_day_items:
+        if day_events_sel:
             st.markdown("**이 날 일정:**")
-            for item_type, original_idx, item_data in combined_day_items:
-                color   = item_data.get("color", "#4D96FF")
-                
-                try:
-                    s_t = item_data["start"].split()[1] if (" " in item_data["start"] and len(item_data["start"].split()) > 1) else item_data["start"]
-                    e_t = item_data["end"].split()[1] if (" " in item_data["end"] and len(item_data["end"].split()) > 1) else item_data["end"]
-                except Exception:
-                    s_t, e_t = "00:00", "00:00"
-                
-                if item_type == "event":
-                    ev_id = item_data.get("id") or f"idx_{original_idx}"
-                    is_sel = (st.session_state.cal_selected_ev_id == ev_id)
-                else:
-                    ev_id = f"exc_{item_data.get('timetable_id', 0)}_{item_data.get('date', active_str)}"
-                    is_sel = (st.session_state.cal_selected_ev_id == ev_id)
+            for ev_i, ev in day_events_sel:
+                color   = ev.get("color", "#4D96FF")
+                s_t     = ev["start"].split()[1] if " " in ev["start"] else ""
+                e_t     = ev["end"].split()[1]   if " " in ev["end"]   else ""
+                ev_id   = ev.get("id") or f"idx_{ev_i}"
+                is_sel  = (st.session_state.cal_selected_ev_id == ev_id)
 
-                try:
-                    r_int = int(color[1:3], 16)
-                    g_int = int(color[3:5], 16)
-                    b_int = int(color[5:7], 16)
-                except Exception:
-                    r_int, g_int, b_int = 77, 150, 255
-                    
+                r_int = int(color[1:3], 16)
+                g_int = int(color[3:5], 16)
+                b_int = int(color[5:7], 16)
                 bg_s  = f"rgba({r_int},{g_int},{b_int},{0.22 if is_sel else 0.10})"
                 bdr_c = "#1976D2" if is_sel else color
 
@@ -799,42 +703,35 @@ def page_my_calendar():
                     st.markdown(
                         f"<div style='background:{bg_s};border-left:4px solid {bdr_c};"
                         f"border-radius:0 8px 8px 0;padding:8px 12px;margin-bottom:4px;'>"
-                        f"<div style='font-weight:700;font-size:14px;color:{color};'>{item_data.get('title','일정')}</div>"
+                        f"<div style='font-weight:700;font-size:14px;color:{color};'>{ev['title']}</div>"
                         f"<div style='font-size:12px;color:#555;margin-top:2px;'>🕐 {s_t} ~ {e_t}</div>"
                         f"</div>",
                         unsafe_allow_html=True
                     )
                 with col_btn:
-                    if item_type == "event":
-                        lbl = "✖" if is_sel else "···"
-                        if st.button(lbl, key=f"sel_ev_{ev_id}", use_container_width=True):
-                            if is_sel:
-                                st.session_state.cal_selected_ev_id  = None
-                                st.session_state.cal_selected_ev_idx = None
-                            else:
-                                st.session_state.cal_selected_ev_id  = ev_id
-                                st.session_state.cal_selected_ev_idx = original_idx
-                            st.rerun()
-                    else:
-                        if st.button("✖", key=f"del_exc_btn_{ev_id}", use_container_width=True, help="예외 설정 해제"):
-                            db_delete_timetable_exception(item_data["timetable_id"], item_data["date"])
-                            st.session_state.data_loaded = False
-                            st.session_state.cal_selected_ev_id = None
-                            st.rerun()
+                    lbl = "✖" if is_sel else "···"
+                    if st.button(lbl, key=f"sel_ev_{ev_id}", use_container_width=True):
+                        if is_sel:
+                            st.session_state.cal_selected_ev_id  = None
+                            st.session_state.cal_selected_ev_idx = None
+                        else:
+                            st.session_state.cal_selected_ev_id  = ev_id
+                            st.session_state.cal_selected_ev_idx = ev_i
+                        st.rerun()
 
-                if item_type == "event" and is_sel:
+                if is_sel:
                     try:
-                        s_d_obj = datetime.strptime(item_data["start"].split()[0], "%Y-%m-%d").date()
-                        s_t_obj = datetime.strptime(item_data["start"].split()[1], "%H:%M").time()
-                        e_d_obj = datetime.strptime(item_data["end"].split()[0],   "%Y-%m-%d").date()
-                        e_t_obj = datetime.strptime(item_data["end"].split()[1],   "%H:%M").time()
+                        s_d_obj = datetime.strptime(ev["start"].split()[0], "%Y-%m-%d").date()
+                        s_t_obj = datetime.strptime(ev["start"].split()[1], "%H:%M").time()
+                        e_d_obj = datetime.strptime(ev["end"].split()[0],   "%Y-%m-%d").date()
+                        e_t_obj = datetime.strptime(ev["end"].split()[1],   "%H:%M").time()
                     except Exception:
                         s_d_obj = e_d_obj = datetime.now().date()
                         s_t_obj = datetime.strptime("09:00", "%H:%M").time()
                         e_t_obj = datetime.strptime("18:00", "%H:%M").time()
 
                     with st.form(f"edit_event_form_{ev_id}"):
-                        new_title  = st.text_input("일정 제목", value=item_data["title"])
+                        new_title  = st.text_input("일정 제목", value=ev["title"])
                         c1, c2     = st.columns(2)
                         new_s_date = c1.date_input("시작 날짜", value=s_d_obj)
                         new_s_time = c2.time_input("시작 시간", value=s_t_obj)
@@ -848,11 +745,11 @@ def page_my_calendar():
 
                     if saved:
                         updated = {
-                            "id":    item_data.get("id"),
+                            "id":    ev.get("id"),
                             "title": new_title,
                             "start": f"{new_s_date} {new_s_time.strftime('%H:%M')}",
                             "end":   f"{new_e_date} {new_e_time.strftime('%H:%M')}",
-                            "color": item_data.get("color", get_random_color()),
+                            "color": ev.get("color", get_random_color()),
                         }
                         db_save_event(st.session_state.user_id, updated)
                         st.session_state.data_loaded = False
@@ -860,8 +757,8 @@ def page_my_calendar():
                         st.session_state.cal_selected_ev_idx = None
                         st.rerun()
                     elif deleted:
-                        if item_data.get("id"):
-                            db_delete_event(item_data["id"])
+                        if ev.get("id"):
+                            db_delete_event(ev["id"])
                         st.session_state.data_loaded = False
                         st.session_state.cal_selected_ev_id  = None
                         st.session_state.cal_selected_ev_idx = None
@@ -905,7 +802,6 @@ def page_my_calendar():
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("⚙️ 고정 시간표 및 예외 관리", type="secondary", use_container_width=True):
         st.session_state.app_page = "FIXED_TIMETABLE"
-        st.session_state.ft_success_msg = None
         st.rerun()
 
 
@@ -976,8 +872,8 @@ def page_fixed_timetable():
                 else:
                     st.warning("일정 제목을 입력해주세요.")
 
-    with st.expander("🚨 🛑 고정 시간표 예외 등록", expanded=True):
-        st.markdown("<p style='font-size:13px; color:#555;'>특정 날짜에 개인 사정 등으로 비워지는 고정 일정을 선택하세요.</p>", unsafe_allow_html=True)
+    with st.expander("🚨 🛑 고정 시간표 예외(휴강) 등록", expanded=True):
+        st.markdown("<p style='font-size:13px; color:#555;'>특정 날짜에 휴강이나 개인 사정으로 비워지는 고정 일정을 선택하세요.</p>", unsafe_allow_html=True)
         
         if not st.session_state.my_timetable:
             st.caption("등록된 고정 일정이 없습니다.")
@@ -987,34 +883,20 @@ def page_fixed_timetable():
             for t in st.session_state.my_timetable:
                 display_text = f"[{t['day']}요일] {t['title']} ({t['start']}~{t['end']})"
                 options.append(display_text)
-                option_map[display_text] = t
+                option_map[display_text] = t["id"]
                 
             selected_option = st.selectbox("제외할 고정 일정 선택", options=options, key="exc_tt_select", label_visibility="collapsed")
             exception_date = st.date_input("예외 날짜 선택", value=datetime.now().date(), key="exc_date_picker")
             
             if st.button("선택한 고정 일정 예외 등록 💾", type="primary", use_container_width=True):
-                target_timetable = option_map[selected_option]
-                target_timetable_id = target_timetable["id"]
-                target_day = target_timetable["day"]
-                
-                weekdays_kr = ["월", "화", "수", "목", "금", "토", "일"]
-                chosen_date_day = weekdays_kr[exception_date.weekday()]
-                
-                if target_day != chosen_date_day:
-                    st.error(f"❌ 요일이 일치하지 않습니다! 선택하신 고정 일정은 {target_day}요일이지만, 선택한 날짜는 {chosen_date_day}요일입니다.")
-                
-                elif db_check_exception_exists(target_timetable_id, str(exception_date)):
-                    st.error("❌ 이미 예외 설정이 돼있습니다.")
-                
+                target_timetable_id = option_map[selected_option]
+                res, err = db_save_timetable_exception(target_timetable_id, str(exception_date))
+                if err:
+                    st.error(f"예외 등록 오류: {err}")
                 else:
-                    res, err = db_save_timetable_exception(target_timetable_id, str(exception_date))
-                    if err:
-                        st.error(f"예외 등록 오류: {err}")
-                    else:
-                        st.session_state.ft_success_msg = f"✅ [{exception_date}] 해당 고정 일정에 대한 예외 처리가 정상 저장되었습니다!"
-                        st.session_state.data_loaded = False
-                        load_user_data()
-                        st.rerun()
+                    st.session_state.ft_success_msg = f"✅ [{exception_date}] 해당 고정 일정에 대한 예외(휴강) 처리가 정상 저장되었습니다!"
+                    st.session_state.data_loaded = False # 예외 등록 해제/등록 즉시 반영되도록 데이터 리로드 상태 초기화
+                    st.rerun()
 
     if st.session_state.my_timetable:
         st.markdown("### 📋 등록된 고정 일정")
@@ -1038,10 +920,39 @@ def page_fixed_timetable():
                     st.session_state.my_timetable.pop(ti)
                     if st.session_state.tt_selected_id == t.get("id"):
                         st.session_state.tt_selected_id = None
+                    st.session_state.data_loaded = False # 삭제 즉시 반영 처리
                     st.session_state.ft_success_msg = None
-                    st.session_state.data_loaded = False
-                    load_user_data()
                     st.rerun()
+
+    st.write("### 🗑️ 일주일 타임라인 (15분 단위)")
+    table_html = (
+        "<div style='overflow-x:auto;-webkit-overflow-scrolling:touch;'>"
+        "<table style='width:100%;min-width:600px;table-layout:fixed;border-collapse:collapse;"
+        "text-align:center;font-size:11px;border:1px solid #ddd;word-break:break-all;'>"
+        "<tr style='background-color:#F5F5F5;font-weight:bold;'>"
+    )
+    for d in ["시간","월","화","수","목","금","토","일"]:
+        table_html += f"<th style='border:1px solid #ddd;padding:6px;'>{d}</th>"
+    table_html += "</tr>"
+    for hour in range(24):
+        for minute in [0, 15, 30, 45]:
+            time_str   = f"{hour:02d}:{minute:02d}"
+            table_html += (
+                f"<tr><td style='border:1px solid #ddd;background-color:#FAFAFA;"
+                f"font-weight:bold;padding:4px;'>{time_str}</td>"
+            )
+            for d_name in ["월","화","수","목","금","토","일"]:
+                bg, text = "white", ""
+                for t in st.session_state.my_timetable:
+                    if t["day"] == d_name and t["start"] <= time_str < t["end"]:
+                        bg, text = t.get("color","#BBDEFB"), t["title"]
+                table_html += (
+                    f"<td style='border:1px solid #ddd;background-color:{bg};"
+                    f"color:#1565C0;padding:2px;'>{text[:4]}</td>"
+                )
+            table_html += "</tr>"
+    table_html += "</table></div>"
+    st.markdown(table_html, unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════
@@ -1143,14 +1054,14 @@ def compute_free_slots(g_members, year, month, day, time_start_h, time_end_h):
                     pass
                     
         for ev in m_data.get("events", []):
-            try:
-                if ev["start"].split()[0] <= d_str <= ev["end"].split()[0]:
+            if ev["start"].split()[0] <= d_str <= ev["end"].split()[0]:
+                try:
                     sh, sm = map(int, ev["start"].split()[1].split(":"))
                     eh, em = map(int, ev["end"].split()[1].split(":"))
                     for i in range(sh * 4 + sm // 15, eh * 4 + em // 15):
                         slots[i] = False
-            except Exception:
-                pass
+                except Exception:
+                    pass
     return slots
 
 
@@ -1178,7 +1089,7 @@ def build_group_calendar_html(year, month, start_d, end_d, date_colors, selected
             num_color = "#E53935" if is_sun else ("#1565C0" if is_sat else "#212121")
 
             if in_range:
-                if (date_colors or {}).get(d_key, "red") == "green":
+                if date_colors.get(d_key, "red") == "green":
                     bg     = "#C8E6C9" if is_sel else "#E8F5E9"
                     border = f"{'2px' if is_sel else '1px'} solid {'#2E7D32' if is_sel else '#81C784'}"
                     lbl    = '<span class="wwm-glbl" style="color:#2E7D32;">🟢가능</span>'
@@ -1401,24 +1312,6 @@ def page_group_room():
         if not avail_slots:
             st.error("선택하신 날짜에는 모든 멤버의 가용 시간대가 겹치지 않습니다.")
         else:
-            ranges = []
-            seg_s = seg_e = avail_slots[0]
-            for i in avail_slots[1:]:
-                if i == seg_e + 1:
-                    seg_e = i
-                else:
-                    ranges.append((seg_s, seg_e + 1)); seg_s = seg_e = i
-            ranges.append((seg_s, seg_e + 1))
-
-            range_texts = [f"<b>{slot_to_time(rs)} ~ {slot_to_time(re)}</b>" for rs, re in ranges]
-            st.markdown(
-                "<div style='background:#E8F5E9;border:1px solid #388E3C;border-radius:8px;"
-                "padding:12px;font-size:13px;color:#1B5E20;line-height:1.8;word-break:break-all;'>"
-                "✅ 공통 가용 시간대:<br>" + " | ".join(range_texts) + "</div>",
-                unsafe_allow_html=True
-            )
-            st.markdown("<br>", unsafe_allow_html=True)
-
             st.markdown("##### ⏰ 시간 직접 설정하여 확정하기")
             time_options = [f"{h:02d}:{m:02d}" for h in range(24) for m in [0,15,30,45]]
             custom_start = st.selectbox("시작", options=time_options, index=time_options.index("12:00"), key=f"cstart_{sel_day}")
@@ -1429,20 +1322,6 @@ def page_group_room():
                 else:
                     st.balloons()
                     st.success(f"🎉 약속 확정! {sy}년 {sm}월 {sd}일 {custom_start} - {custom_end}")
-
-            st.markdown("---")
-            st.markdown("##### ✨ 가용 시간대에서 바로 선택")
-            for idx, (rs, re) in enumerate(ranges):
-                duration_min = (re - rs) * 15
-                dur_str = (f"{duration_min // 60}시간 {duration_min % 60}분"
-                           if duration_min % 60 else f"{duration_min // 60}시간")
-                if st.button(
-                    f"👍 {slot_to_time(rs)} - {slot_to_time(re)} ({dur_str})",
-                    key=f"confirm_{sel_day}_{rs}", use_container_width=True
-                ):
-                    st.balloons()
-                    st.success(f"🎉 약속 확정! {sy}년 {sm}월 {sd}일 "
-                               f"{slot_to_time(rs)} - {slot_to_time(re)}")
 
     st.markdown("---")
     st.subheader("📊 요일별 공통 가용 시간표")
