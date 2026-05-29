@@ -272,7 +272,7 @@ def require_login():
 
 
 # ════════════════════════════════════════════════
-# 공통 상단 헤더 (로그인 후 페이지용)
+# 공통 상단 헤더
 # ════════════════════════════════════════════════
 def render_header(title, back_page=None, back_label="← 홈으로"):
     c1, c2 = st.columns([5, 1])
@@ -444,12 +444,51 @@ def page_home():
 
 
 # ════════════════════════════════════════════════
-# 나의 일정
+# 나의 일정 (안 눌러도 바로 내용이 보이는 개편된 달력)
 # ════════════════════════════════════════════════
 def page_my_calendar():
+    # ── 💡 버튼 자체가 컬러 바(Bar)가 되어 텍스트를 바로 보여주도록 CSS 주입 ──
+    st.markdown("""
+        <style>
+        /* 캘린더 내부 일정 바(Bar) 버튼 스타일 최적화 */
+        div[data-testid="stColumn"] div.stButton > button {
+            color: #FFFFFF !important;              /* 글자색 무조건 흰색 강제 */
+            border: none !important;
+            border-radius: 4px !important;
+            padding: 3px 6px !important;            /* 내부 여백 */
+            font-size: 11px !important;             /* 모바일 가독성 크기 */
+            font-weight: bold !important;
+            margin-top: 2px !important;
+            margin-bottom: 2px !important;
+            width: 100% !important;                 /* 가로 꽉 차게 */
+            display: block !important;
+            text-align: left !important;            /* 순정 캘린더처럼 왼쪽 정렬 */
+            white-space: nowrap !important;         /* 말줄임 처리 활성화 */
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            height: 24px !important;                /* 바 두께 확보 */
+            line-height: 1.2 !important;
+        }
+        /* 마우스 호버 효과 */
+        div[data-testid="stColumn"] div.stButton > button:hover {
+            opacity: 0.85 !important;
+            color: #FFFFFF !important;
+        }
+        /* 추가(+) 버튼 전용 미니멀 스타일 정의 */
+        div[data-testid="stColumn"] div.stButton > button[key^="add_btn_"] {
+            color: #555555 !important;
+            background-color: #ECEFF1 !important;
+            text-align: center !important;
+            height: 22px !important;
+            font-size: 10px !important;
+            font-weight: normal !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
     h1, h2 = st.columns([5, 1])
     with h2:
-        if st.button("홈으로", use_container_width=True):
+        if st.button("홈으로", use_container_width=True, key="cal_home_btn"):
             st.session_state.app_page = "HOME"
             st.rerun()
     with h1:
@@ -457,7 +496,7 @@ def page_my_calendar():
 
     n1, n2, n3 = st.columns([1, 4, 1])
     with n1:
-        if st.button("<", use_container_width=True):
+        if st.button("<", use_container_width=True, key="cal_prev_month"):
             st.session_state.view_month -= 1
             if st.session_state.view_month == 0:
                 st.session_state.view_month = 12
@@ -469,7 +508,7 @@ def page_my_calendar():
             f"{st.session_state.view_month}월</h3>", unsafe_allow_html=True
         )
     with n3:
-        if st.button(">", use_container_width=True):
+        if st.button(">", use_container_width=True, key="cal_next_month"):
             st.session_state.view_month += 1
             if st.session_state.view_month == 13:
                 st.session_state.view_month = 1
@@ -491,31 +530,41 @@ def page_my_calendar():
                     f"{st.session_state.view_month:02d}-"
                     f"{day_num:02d}"
                 )
-                cell_html = (
-                    f"<div style='min-height:80px; border:1px solid #ddd; "
-                    f"padding:5px; border-radius:5px;'>"
-                    f"<div style='font-weight:bold; font-size:14px;'>{day_num}</div>"
-                )
+                
+                # 해당 날짜에 포함되는 일정 필터링
                 day_events = [
                     (i, ev) for i, ev in enumerate(st.session_state.my_events)
                     if ev["start"].split()[0] <= date_str <= ev["end"].split()[0]
                 ]
-                cell_html += "</div>"
-                cols[idx].markdown(cell_html, unsafe_allow_html=True)
 
-                if cols[idx].button("+", key=f"add_btn_{date_str}"):
-                    st.session_state.active_add_day = day_num
-                    st.session_state.editing_event_idx = None
-                
-                # [수정] 일정 바를 버튼으로 구현하여 클릭 시 수정 모드로 진입
-                for ev_i, ev in day_events:
-                    color = ev.get("color", "#FFCDD2")
-                    s_t = ev["start"].split()[1] if " " in ev["start"] else ""
-                    e_t = ev["end"].split()[1] if " " in ev["end"] else ""
+                with cols[idx]:
+                    # 날짜 숫자 표기
+                    st.markdown(f"<div style='font-weight:bold; font-size:14px; border-top:1px solid #ddd; padding-top:4px;'>{day_num}</div>", unsafe_allow_html=True)
                     
-                    if cols[idx].button(f"🕐 {s_t}~{e_t} {ev['title']}", key=f"bar_{date_str}_{ev_i}"):
-                        st.session_state.editing_event_idx = ev_i
-                        st.session_state.active_add_day = None
+                    # 숨겨진 글자판 방식 대신, 버튼 자체에 디자인 컬러와 텍스트를 주입하여 렌더링
+                    for ev_i, ev in day_events:
+                        color = ev.get("color", "#FF6B6B")
+                        s_t = ev["start"].split()[1] if " " in ev["start"] else ""
+                        
+                        # 버튼 키별로 배경색을 다이내믹하게 삽입
+                        st.markdown(f"""
+                            <style>
+                            div[data-testid="stColumn"] div.stButton > button[key="edit_ev_{date_str}_{ev_i}"] {{
+                                background-color: {color} !important;
+                            }}
+                            </style>
+                        """, unsafe_allow_html=True)
+                        
+                        # 버튼 텍스트에 시간과 제목을 동시에 포함시켜 안 눌러도 내용이 보이게 처리
+                        if st.button(f"{s_t} {ev['title']}", key=f"edit_ev_{date_str}_{ev_i}", use_container_width=True):
+                            st.session_state.editing_event_idx = ev_i
+                            st.session_state.active_add_day = None
+                            st.rerun()
+                    
+                    # 일정 추가 버튼
+                    if st.button("+ 추가", key=f"add_btn_{date_str}", use_container_width=True):
+                        st.session_state.active_add_day = day_num
+                        st.session_state.editing_event_idx = None
                         st.rerun()
             else:
                 cols[idx].write("")
@@ -749,7 +798,7 @@ def page_group_list():
 
 
 # ════════════════════════════════════════════════
-# 그룹 방 - 일정 대조 핵심 로직
+# 그룹 방
 # ════════════════════════════════════════════════
 def slot_to_time(i):
     return f"{i // 4:02d}:{(i % 4) * 15:02d}"
@@ -830,7 +879,7 @@ def page_group_room():
     with col_m:
         min_h = st.number_input("⏱️ 최소 연속 가능 시간 (시간)", min_value=1, max_value=12, value=2, key="grp_min_h")
 
-    st.markdown("🕐 **희망 시간대** (이 범위 안에서 가능한 시간을 찾습니다)")
+    st.markdown("🕐 **희망 시간대**")
     col_t1, col_t2 = st.columns(2)
     with col_t1:
         time_start_h = st.selectbox(
@@ -890,41 +939,88 @@ def page_group_room():
     colors = st.session_state.grp_date_colors
     start_d = st.session_state.grp_start_d
     end_d = st.session_state.grp_end_d
+    t_start = st.session_state.grp_time_start
+    t_end = st.session_state.grp_time_end
 
     st.markdown("---")
+
+    green_cnt = sum(1 for v in colors.values() if v == "green")
+    red_cnt = sum(1 for v in colors.values() if v == "red")
+    mc1, mc2, mc3 = st.columns(3)
+    mc1.metric("✅ 가능한 날", f"{green_cnt}일")
+    mc2.metric("❌ 불가능한 날", f"{red_cnt}일")
+    mc3.metric("👥 참여 인원", f"{len(g_members)}명")
+
+    st.markdown("### 📅 일정 대조 달력")
+    st.markdown(
+        "<div style='display:flex; gap:16px; margin-bottom:8px; font-size:13px;'>"
+        "<span>🟩 약속 가능</span><span>🟥 약속 불가</span><span>⬜ 범위 외</span></div>",
+        unsafe_allow_html=True
+    )
+
     render_year, render_month = start_d.year, start_d.month
     end_year, end_month = end_d.year, end_d.month
 
     while (render_year, render_month) <= (end_year, end_month):
         cal_matrix = calendar.monthcalendar(render_year, render_month)
-        
-        cal_html = (f"<div style='font-weight:bold; font-size:15px; margin-bottom:5px;'>{render_year}년 {render_month}월</div>"
-                    "<table style='width:100%; border-collapse:separate; border-spacing:3px;'><tr>")
+        cur_selected = st.session_state.get("grp_selected_day")
+
+        cal_html = (
+            f"<div style='margin-bottom:4px; font-weight:bold; font-size:15px;'>{render_year}년 {render_month}월</div>"
+            "<table style='width:100%; border-collapse:separate; border-spacing:3px; table-layout:fixed;'>"
+            "<tr>"
+        )
         for dn in ["일", "월", "화", "수", "목", "금", "토"]:
-            cal_html += f"<th style='text-align:center; font-size:12px; color:#555;'>{dn}</th>"
+            cal_html += f"<th style='text-align:center; padding:6px 2px; font-size:12px; color:#555;'>{dn}</th>"
         cal_html += "</tr>"
+
         for week in cal_matrix:
             cal_html += "<tr>"
             for d_num in week:
                 if d_num == 0:
                     cal_html += "<td></td>"
+                    continue
+                d_key = f"{render_year}-{render_month:02d}-{d_num:02d}"
+                d_date = date_type(render_year, render_month, d_num)
+                in_range = start_d <= d_date <= end_d
+                is_sel = (d_key == cur_selected)
+
+                if in_range:
+                    color_val = colors.get(d_key, "red")
+                    if color_val == "green":
+                        bg, txt = "#C8E6C9", "#1B5E20"
+                        bdr = "#1976D2" if is_sel else "#388E3C"
+                    else:
+                        bg, txt = "#FFCDD2", "#7F0000"
+                        bdr = "#1976D2" if is_sel else "#D32F2F"
+                    bw = "3px" if is_sel else "1px"
+                    shadow = "box-shadow:0 0 0 2px #1976D2;" if is_sel else ""
                 else:
-                    d_key = f"{render_year}-{render_month:02d}-{d_num:02d}"
-                    bg = "#C8E6C9" if colors.get(d_key) == "green" else "#FFCDD2" if d_key in colors else "#F5F5F5"
-                    cal_html += f"<td style='background:{bg}; text-align:center; padding:8px; border-radius:6px; font-size:13px; font-weight:bold;'>{d_num}</td>"
+                    bg, txt, bdr, bw, shadow = "#F5F5F5", "#bbb", "#ddd", "1px", ""
+
+                cal_html += f"<td style='background:{bg}; color:{txt}; text-align:center; padding:8px 2px; border-radius:6px; border:{bw} solid {bdr}; font-weight:bold; font-size:13px; {shadow}'>{d_num}</td>"
             cal_html += "</tr>"
         cal_html += "</table>"
         st.markdown(cal_html, unsafe_allow_html=True)
 
         for week in cal_matrix:
+            has_any = any(d_num != 0 and start_d <= date_type(render_year, render_month, d_num) <= end_d for d_num in week)
+            if not has_any:
+                continue
             btn_cols = st.columns(7)
             for idx, d_num in enumerate(week):
-                if d_num != 0:
-                    d_key = f"{render_year}-{render_month:02d}-{d_num:02d}"
-                    if btn_cols[idx].button("상세", key=f"detail_{d_key}"):
-                        st.session_state.grp_selected_day = d_key
+                if d_num == 0:
+                    continue
+                d_key = f"{render_year}-{render_month:02d}-{d_num:02d}"
+                d_date = date_type(render_year, render_month, d_num)
+                if start_d <= d_date <= end_d:
+                    is_sel = (d_key == cur_selected)
+                    lbl = "✔ 선택" if is_sel else "상세"
+                    if btn_cols[idx].button(lbl, key=f"detail_{d_key}", use_container_width=True):
+                        st.session_state.grp_selected_day = None if is_sel else d_key
                         st.rerun()
 
+        st.markdown("<br>", unsafe_allow_html=True)
         render_month += 1
         if render_month > 12:
             render_month = 1
@@ -932,19 +1028,103 @@ def page_group_room():
 
     selected = st.session_state.get("grp_selected_day")
     if selected:
-        st.markdown("---")
-        st.subheader(f"📍 {selected} 시간대 분석")
-        if st.button("✖ 닫기"):
-            st.session_state.grp_selected_day = None
-            st.rerun()
-        # (생략: 상세 로직 동일)
+        slots = st.session_state.grp_free_slots.get(selected, [False] * 96)
+        year_s, month_s, day_s = map(int, selected.split("-"))
 
+        st.markdown("---")
+        col_title, col_close = st.columns([5, 1])
+        with col_title:
+            st.subheader(f"📍 {year_s}년 {month_s}월 {day_s}일 시간대 분석")
+        with col_close:
+            if st.button("✖ 닫기", key="close_detail"):
+                st.session_state.grp_selected_day = None
+                st.rerun()
+
+        s_idx = t_start * 4
+        e_idx = t_end * 4
+        avail_slots = [i for i in range(s_idx, e_idx) if i < len(slots) and slots[i]]
+
+        if not avail_slots:
+            st.error("이 날짜에는 모두가 가능한 시간대가 없습니다.")
+        else:
+            ranges = []
+            seg_s = avail_slots[0]
+            seg_e = avail_slots[0]
+            for i in avail_slots[1:]:
+                if i == seg_e + 1:
+                    seg_e = i
+                else:
+                    ranges.append((seg_s, seg_e + 1))
+                    seg_s = seg_e = i
+            ranges.append((seg_s, seg_e + 1))
+
+            range_texts = [f"<b>{slot_to_time(rs)} &#8209; {slot_to_time(re)}</b>" for rs, re in ranges]
+            st.markdown(
+                "<div style='background:#E8F5E9; border:1px solid #388E3C; border-radius:8px; padding:14px 16px; font-size:14px; color:#1B5E20; line-height:2;'>✅ 연속 가능 시간대:<br>" + " &nbsp;/&nbsp; ".join(range_texts) + "</div>",
+                unsafe_allow_html=True
+            )
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            st.markdown("##### ⏰ 약속 시간 확정")
+            btn_cols = st.columns(min(len(ranges), 3))
+            for idx, (rs, re) in enumerate(ranges):
+                duration_min = (re - rs) * 15
+                dur_str = f"{duration_min // 60}시간 {duration_min % 60}분" if duration_min % 60 else f"{duration_min // 60}시간"
+                if btn_cols[idx % 3].button(f"{slot_to_time(rs)} - {slot_to_time(re)} ({dur_str})", key=f"confirm_{selected}_{rs}", use_container_width=True):
+                    st.balloons()
+                    st.success(f"🎉 약속 확정!  {year_s}년 {month_s}월 {day_s}일  {slot_to_time(rs)} - {slot_to_time(re)}")
+
+    st.markdown("---")
+    st.subheader("📊 요일별 공통 가용 시간표")
+    t_start = st.session_state.get("grp_time_start", 9)
+    t_end = st.session_state.get("grp_time_end", 21)
+    w_days = ["월", "화", "수", "목", "금", "토", "일"]
+    hours_range = list(range(t_start, t_end))
+
+    w_table = (
+        "<table style='width:100%; text-align:center; font-size:11px; border-collapse:collapse;'><tr style='background-color:#F5F5F5;'><th style='padding:6px; border:1px solid #ddd;'>요일/시간</th>"
+    )
+    for h in hours_range:
+        w_table += f"<th style='border:1px solid #ddd; padding:4px;'>{h:02d}</th>"
+    w_table += "</tr>"
+
+    for w_day in w_days:
+        w_table += f"<tr><td style='font-weight:bold; border:1px solid #ddd; padding:6px;'>{w_day}</td>"
+        for h in hours_range:
+            is_free = True
+            for name, m_data in g_members.items():
+                for t in m_data.get("timetable", []):
+                    if t["day"] == w_day:
+                        try:
+                            sh = int(t["start"].split(":")[0])
+                            eh = int(t["end"].split(":")[0])
+                            if sh <= h < eh:
+                                is_free = False
+                        except Exception:
+                            pass
+            bg = "#4CAF50" if is_free else "#F44336"
+            w_table += f"<td style='background-color:{bg}; border:1px solid #ddd;'></td>"
+        w_table += "</tr>"
+    w_table += "</table>"
+    st.markdown(w_table, unsafe_allow_html=True)
+
+
+# ════════════════════════════════════════════════
 # 라우터
+# ════════════════════════════════════════════════
 page = st.session_state.app_page
-if page == "LOGIN": page_login()
-elif page == "HOME": require_login(); load_user_data(); page_home()
-elif page == "ACCOUNT": require_login(); page_account()
-elif page == "MY_CALENDAR": require_login(); page_my_calendar()
-elif page == "FIXED_TIMETABLE": require_login(); page_fixed_timetable()
-elif page == "GROUP_LIST": require_login(); page_group_list()
-elif page == "GROUP_ROOM": require_login(); page_group_room()
+
+if page == "LOGIN":
+    page_login()
+elif page == "HOME":
+    require_login(); load_user_data(); page_home()
+elif page == "ACCOUNT":
+    require_login(); page_account()
+elif page == "MY_CALENDAR":
+    require_login(); page_my_calendar()
+elif page == "FIXED_TIMETABLE":
+    require_login(); page_fixed_timetable()
+elif page == "GROUP_LIST":
+    require_login(); page_group_list()
+elif page == "GROUP_ROOM":
+    require_login(); page_group_room()
