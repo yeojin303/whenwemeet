@@ -18,6 +18,37 @@ supabase = get_supabase()
 
 st.set_page_config(page_title="When We Meet", page_icon="📅", layout="wide")
 
+# ════════════════════════════════════════════════
+# 모바일 달력 세로 깨짐 방지 CSS (여기만 추가됨)
+# ════════════════════════════════════════════════
+st.markdown("""
+<style>
+/* 모바일 화면에서 7열(달력) 컬럼이 세로로 길게 쌓이지 않고 가로로 유지되도록 강제 설정 */
+@media (max-width: 768px) {
+    div[data-testid="stHorizontalBlock"]:has(> div:nth-child(7)) {
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        gap: 2px !important;
+        overflow: hidden !important; /* 가로 스크롤 방지, 폰 화면에 딱 맞춤 */
+        width: 100% !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has(> div:nth-child(7)) > div[data-testid="column"] {
+        width: calc(100% / 7) !important;
+        flex: 1 1 calc(100% / 7) !important;
+        min-width: 0 !important; /* 넓이 강제 축소 허용 */
+        padding: 0 1px !important;
+    }
+    /* 달력 안쪽 버튼 사이즈 최적화 */
+    div[data-testid="stHorizontalBlock"]:has(> div:nth-child(7)) button {
+        padding: 0 !important;
+        font-size: 10px !important;
+        min-height: 24px !important;
+    }
+}
+</style>
+""", unsafe_allow_html=True)
+# ════════════════════════════════════════════════
+
 _LOCK = threading.Lock()
 calendar.setfirstweekday(6)
 
@@ -408,7 +439,6 @@ def page_home():
 
     cal_matrix = calendar.monthcalendar(now.year, now.month)
     
-    # HTML 줄바꿈(들여쓰기) 문제 수정
     cal_html = "<div style='display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center;'>"
     
     for d in ["일", "월", "화", "수", "목", "금", "토"]:
@@ -447,7 +477,7 @@ def page_home():
 
 
 # ════════════════════════════════════════════════
-# 나의 일정 (수정 완료)
+# 나의 일정
 # ════════════════════════════════════════════════
 def page_my_calendar():
     h1, h2 = st.columns([5, 2])
@@ -533,7 +563,6 @@ def page_my_calendar():
                 bars_html += f"<div style='font-size:8px;color:#999;margin-top:1px;'>+{len(day_events)-2}</div>"
 
             with cols[col_idx]:
-                # HTML 줄바꿈(들여쓰기) 문제 수정
                 container_style = (
                     f"<div style='background:{bg_color}; border:{border_w} solid {border_c}; border-radius:6px; padding:4px; text-align:center; min-height:65px;'>"
                     f"<span style='font-size:11px; font-weight:bold; color:{num_color};'>{'🌞 ' if is_today else ''}{day_num}</span>"
@@ -841,7 +870,7 @@ def page_group_list():
 
 
 # ════════════════════════════════════════════════
-# 그룹 방 (수정 완료)
+# 그룹 방
 # ════════════════════════════════════════════════
 def slot_to_time(i):
     return f"{i // 4:02d}:{(i % 4) * 15:02d}"
@@ -1143,7 +1172,6 @@ def page_group_room():
                     bg, border, status_lbl = "#FAFAFA", "1px solid #eee", "<span style='color:#bbb; font-size:9px;'>⚪제외</span>"
 
                 with cols[col_idx]:
-                    # HTML 줄바꿈(들여쓰기) 문제 수정
                     container_style = (
                         f"<div style='background:{bg}; border:{border}; padding:4px; text-align:center; border-radius:6px; min-height:55px;'>"
                         f"<span style='font-size:11px; font-weight:bold; color:{num_color};'>{d_num}</span><br>"
