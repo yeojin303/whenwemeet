@@ -404,10 +404,12 @@ def build_calendar_html(year, month, events, selected_date_str=None):
             elif is_today:
                 cls += " wwm-cell-today"
 
+            # 달력 칸 내부 일정 추출 및 '시작 시간' 기준 오름차순 정렬
             day_events = [
                 ev for ev in events
                 if ev["start"].split()[0] <= date_str <= ev["end"].split()[0]
             ]
+            day_events = sorted(day_events, key=lambda x: x["start"].split()[1] if " " in x["start"] else "00:00")
 
             bars = ""
             for ev in day_events[:2]:
@@ -418,7 +420,7 @@ def build_calendar_html(year, month, events, selected_date_str=None):
                 bars += f'<div class="wwm-more">+{len(day_events)-2}</div>'
 
             today_lbl = '<span class="wwm-today-lbl">Today</span>' if is_today else ""
-            sel_ring  = "🌞 " if is_today else ""
+            sel_ring  = "📌 " if is_today else ""  # 오늘 날짜 마커를 🌞에서 📌로 변경
 
             html += (
                 f'<div class="{cls}">'
@@ -647,10 +649,12 @@ def page_my_calendar():
         active_date = st.session_state.cal_selected_date
         active_str  = active_date.strftime("%Y-%m-%d")
 
+        # 해당 날짜의 일정을 가져온 후 '시작 시간' 순서로 정렬
         day_events_sel = [
             (i, ev) for i, ev in enumerate(st.session_state.my_events)
             if ev["start"].split()[0] <= active_str <= ev["end"].split()[0]
         ]
+        day_events_sel = sorted(day_events_sel, key=lambda x: x[1]["start"].split()[1] if " " in x[1]["start"] else "00:00")
 
         st.markdown("---")
         hc1, hc2 = st.columns([5, 1])
@@ -663,7 +667,7 @@ def page_my_calendar():
                 st.session_state.cal_selected_ev_idx = None
                 st.rerun()
 
-        # 이 날 일정 목록
+        # 이 날 일정 목록 (정렬된 순서대로 렌더링됨)
         if day_events_sel:
             st.markdown("**이 날 일정:**")
             for ev_i, ev in day_events_sel:
@@ -821,7 +825,15 @@ def page_fixed_timetable():
 
     if st.session_state.my_timetable:
         st.markdown("### 📋 등록된 고정 일정")
-        for ti, t in enumerate(st.session_state.my_timetable):
+        
+        # 요일 순서 매핑 딕셔너리 생성 및 요일별->시간별 정렬 적용
+        day_order = {"월": 0, "화": 1, "수": 2, "목": 3, "금": 4, "토": 5, "일": 6}
+        sorted_timetable = sorted(
+            st.session_state.my_timetable,
+            key=lambda x: (day_order.get(x["day"], 7), x["start"])
+        )
+
+        for ti, t in enumerate(sorted_timetable):
             col_a, col_b = st.columns([5, 2])
             with col_a:
                 st.markdown(
@@ -831,10 +843,11 @@ def page_fixed_timetable():
                     unsafe_allow_html=True
                 )
             with col_b:
-                if st.button("🗑️", key=f"del_tt_{ti}", use_container_width=True):
+                if st.button("🗑️", key=f"del_tt_{t.get('id') or ti}", use_container_width=True):
                     if t.get("id"):
                         db_delete_timetable_entry(t["id"])
-                    st.session_state.my_timetable.pop(ti)
+                    # 세션 내부 원본 데이터 배열에서도 해당 id 항목을 지워주기 위함
+                    st.session_state.my_timetable = [item for item in st.session_state.my_timetable if item.get("id") != t.get("id")]
                     st.rerun()
 
     st.write("### 📊 일주일 타임라인 (15분 단위)")
