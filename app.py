@@ -18,6 +18,39 @@ supabase = get_supabase()
 
 st.set_page_config(page_title="When We Meet", page_icon="📅", layout="wide")
 
+# 📱 [모바일 캘린더 그리드 붕괴 방지 핵심 CSS] 
+# 스마트폰 화면에서도 7열 종대 달력 구조가 세로 줄로 찢어지지 않고 격자 형태를 강제 유지하도록 설정
+st.markdown("""
+<style>
+@media (max-width: 768px) {
+    /* 7개의 컬럼 레이아웃을 가진 주간 행을 찾아서 가로 한 줄 정렬 강제 유지 */
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"]:nth-child(7)) {
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        gap: 3px !important;
+    }
+    /* 각 일자별 칸의 너비를 무조건 7분의 1 크기(14.28%)로 강제 고정 */
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"]:nth-child(7)) > div[data-testid="column"] {
+        width: calc(14.2857% - 3px) !important;
+        min-width: calc(14.2857% - 3px) !important;
+        max-width: calc(14.2857% - 3px) !important;
+        flex: 1 1 0% !important;
+        padding: 0 !important;
+    }
+    /* 좁은 칸 안에서 '선택/확인' 버튼이 튀어나오지 않도록 폰트 및 높이 축소 */
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"]:nth-child(7)) button {
+        padding: 2px 0 !important;
+        min-height: 24px !important;
+        height: 24px !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"]:nth-child(7)) button * {
+        font-size: 9px !important;
+        line-height: 1 !important;
+    }
+}
+</style>
+""", unsafe_allow_html=True)
+
 _LOCK = threading.Lock()
 calendar.setfirstweekday(6)
 
@@ -533,7 +566,6 @@ def page_my_calendar():
                 bars_html += f"<div style='font-size:8px;color:#999;margin-top:1px;'>+{len(day_events)-2}</div>"
 
             with cols[col_idx]:
-                # 🛠️ [수정반영 완료] 모바일 가독성 및 마크다운 깨짐 방지를 위한 단일 f-string 화
                 container_style = (
                     f'<div style="background:{bg_color}; border:{border_w} solid {border_c}; border-radius:6px; padding:4px; text-align:center; min-height:65px;">'
                     f'<span style="font-size:11px; font-weight:bold; color:{num_color};">{"🌞 " if is_today else ""}{day_num}</span>'
@@ -1143,7 +1175,6 @@ def page_group_room():
                     bg, border, status_lbl = "#FAFAFA", "1px solid #eee", "<span style='color:#bbb; font-size:9px;'>⚪제외</span>"
 
                 with cols[col_idx]:
-                    # 🛠️ [수정반영 완료] 모바일 가독성 및 마크다운 깨짐 방지를 위한 단일 f-string 화
                     container_style = (
                         f'<div style="background:{bg}; border:{border}; padding:4px; text-align:center; border-radius:6px; min-height:55px;">'
                         f'<span style="font-size:11px; font-weight:bold; color:{num_color};">{d_num}</span><br>'
