@@ -492,85 +492,76 @@ def page_my_calendar():
     cal_matrix = calendar.monthcalendar(cur_year, cur_month)
     active_day = st.session_state.get("active_add_day")
 
-    # ── HTML 테이블 달력 (모바일 안전) ─────────────────
+    # ── 요일 헤더 ─────────────────────────────────────
     day_names = ["일", "월", "화", "수", "목", "금", "토"]
-    cal_html = (
-        "<table style='width:100%; border-collapse:separate; border-spacing:3px; table-layout:fixed;'>"
-        "<tr>"
-    )
+    hdr_cols = st.columns(7)
     for i, dn in enumerate(day_names):
         color = "#E53935" if i == 0 else ("#1565C0" if i == 6 else "#555")
-        cal_html += (
-            f"<th style='text-align:center; padding:6px 2px; font-size:12px; "
-            f"color:{color}; font-weight:bold;'>{dn}</th>"
+        hdr_cols[i].markdown(
+            f"<div style='text-align:center; font-size:12px; font-weight:bold; "
+            f"color:{color}; padding:4px 0;'>{dn}</div>",
+            unsafe_allow_html=True
         )
-    cal_html += "</tr>"
 
+    # CSS: 버튼 높이·여백 최소화해서 달력처럼 보이게
+    st.markdown("""
+    <style>
+    div[data-testid="stColumns"] > div > div > div > button {
+        min-height: 60px !important;
+        padding: 2px !important;
+        font-size: 11px !important;
+        line-height: 1.2 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # ── 주별로 버튼 행 + 패널 렌더링 ──────────────────
     for week in cal_matrix:
-        cal_html += "<tr>"
+        week_cols = st.columns(7)
         for col_idx, day_num in enumerate(week):
             if day_num == 0:
-                cal_html += "<td style='min-height:72px;'></td>"
+                week_cols[col_idx].markdown(" ")
                 continue
-
-            date_str   = f"{cur_year}-{cur_month:02d}-{day_num:02d}"
-            is_today   = (day_num == today.day and cur_month == today.month and cur_year == today.year)
-            is_active  = (active_day == day_num)
-            is_sun     = (col_idx == 0)
-            is_sat     = (col_idx == 6)
-
-            num_color    = "#E53935" if is_sun else ("#1565C0" if is_sat else "#212121")
-            border_color = "#1976D2" if is_active else "#e0e0e0"
-            bg_color     = "#EEF4FF" if is_active else "white"
-            border_w     = "2px" if is_active else "1px"
-
-            if is_today:
-                num_html = (
-                    f"<span style='display:inline-block; background:#1976D2; color:white; "
-                    f"border-radius:50%; width:18px; height:18px; line-height:18px; "
-                    f"text-align:center; font-size:10px; font-weight:700;'>{day_num}</span>"
-                )
-            else:
-                num_html = f"<span style='font-size:11px; font-weight:600; color:{num_color};'>{day_num}</span>"
+            date_str  = f"{cur_year}-{cur_month:02d}-{day_num:02d}"
+            is_today  = (day_num == today.day and cur_month == today.month and cur_year == today.year)
+            is_active = (active_day == day_num)
+            is_sun    = (col_idx == 0)
+            is_sat    = (col_idx == 6)
 
             day_events = [
                 ev for ev in st.session_state.my_events
                 if ev["start"].split()[0] <= date_str <= ev["end"].split()[0]
             ]
+            ev_dots = "".join([
+                f"<span style='display:inline-block;width:5px;height:5px;border-radius:50%;"
+                f"background:{ev.get('color','#4D96FF')};margin:0 1px;'></span>"
+                for ev in day_events[:3]
+            ])
 
-            bars_html = ""
-            for ev in day_events[:2]:
-                c       = ev.get("color", "#4D96FF")
-                t_short = ev["title"][:4] + ("…" if len(ev["title"]) > 4 else "")
-                bars_html += (
-                    f"<div style='background:{c}; color:white; font-size:7px; font-weight:600; "
-                    f"border-radius:2px; padding:1px 2px; margin-top:1px; "
-                    f"white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:12px;'>"
-                    f"{t_short}</div>"
+            num_color = "#E53935" if is_sun else ("#1565C0" if is_sat else "#212121")
+            if is_today:
+                num_style = (
+                    "display:inline-block;background:#1976D2;color:white;"
+                    "border-radius:50%;width:20px;height:20px;line-height:20px;"
+                    "text-align:center;font-size:11px;font-weight:700;"
                 )
-            if len(day_events) > 2:
-                bars_html += f"<div style='font-size:7px; color:#999; margin-top:1px;'>+{len(day_events)-2}</div>"
+                num_html = f"<span style='{num_style}'>{day_num}</span>"
+            else:
+                num_html = f"<span style='font-size:11px;font-weight:600;color:{num_color};'>{day_num}</span>"
 
-            cal_html += (
-                f"<td style='background:{bg_color}; border:{border_w} solid {border_color}; "
-                f"border-radius:6px; padding:3px 2px; vertical-align:top; min-height:72px; "
-                f"height:72px;'>"
-                f"<div style='margin-bottom:1px;'>{num_html}</div>{bars_html}</td>"
+            bg = "#EEF4FF" if is_active else "white"
+            border = "2px solid #1976D2" if is_active else "1px solid #e0e0e0"
+            btn_label = (
+                f"<div style='background:{bg};border:{border};border-radius:6px;"
+                f"padding:4px 2px;text-align:center;cursor:pointer;'>"
+                f"{num_html}<br>{ev_dots}</div>"
             )
-        cal_html += "</tr>"
-    cal_html += "</table>"
-    st.markdown(cal_html, unsafe_allow_html=True)
-
-    # ── 버튼 행: 날짜마다 클릭 버튼 (7열 유지) ─────────
-    for week in cal_matrix:
-        btn_cols = st.columns(7)
-        for idx, day_num in enumerate(week):
-            if day_num == 0:
-                continue
-            date_str  = f"{cur_year}-{cur_month:02d}-{day_num:02d}"
-            is_active = (active_day == day_num)
-            lbl = "✔" if is_active else " "
-            if btn_cols[idx].button(lbl, key=f"day_{date_str}", use_container_width=True):
+            if week_cols[col_idx].button(
+                f"{'✔ ' if is_active else ''}{day_num}",
+                key=f"day_{date_str}",
+                use_container_width=True,
+                help=f"{cur_year}-{cur_month:02d}-{day_num:02d}"
+            ):
                 if is_active:
                     st.session_state.active_add_day = None
                 else:
@@ -589,8 +580,8 @@ def page_my_calendar():
             ]
 
             st.markdown(
-                f"<div style='background:#F0F4FF; border:2px solid #1976D2; border-radius:10px; "
-                f"padding:12px 14px; margin:4px 0 8px 0;'>",
+                "<div style='background:#F0F4FF; border:2px solid #1976D2; border-radius:10px; "
+                "padding:12px 14px; margin:4px 0 8px 0;'>",
                 unsafe_allow_html=True
             )
             hc1, hc2 = st.columns([5, 1])
@@ -1053,55 +1044,52 @@ def page_group_room():
         st.markdown(f"##### 📅 {render_year}년 {render_month}월")
         cal_matrix = calendar.monthcalendar(render_year, render_month)
 
-        grid_html = """
-        <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; margin-bottom: 6px;">
-        """
-        for dn in ["일", "월", "화", "수", "목", "금", "토"]:
-            grid_html += f"<div style='font-weight: bold; font-size: 12px; padding: 4px 0;'>{dn}</div>"
+        # 요일 헤더
+        hdr_cols = st.columns(7)
+        for i, dn in enumerate(["일", "월", "화", "수", "목", "금", "토"]):
+            hdr_cols[i].markdown(
+                f"<div style='text-align:center;font-size:11px;font-weight:bold;"
+                f"color:#555;padding:2px 0;'>{dn}</div>",
+                unsafe_allow_html=True
+            )
 
+        # 주별로 버튼 행 + 패널
         for week in cal_matrix:
-            for d_num in week:
-                if d_num != 0:
-                    d_key = f"{render_year}-{render_month:02d}-{d_num:02d}"
-                    d_date = date_type(render_year, render_month, d_num)
-                    in_range = start_d <= d_date <= end_d
-                    is_sel = (st.session_state.grp_selected_day == d_key)
-
-                    bg, border, text_color = "white", "1px solid #ddd", "#333"
-                    if in_range:
-                        if colors.get(d_key, "red") == "green":
-                            bg = "#C8E6C9" if is_sel else "#E8F5E9"
-                            border = "2px solid #2E7D32" if is_sel else "1px solid #81C784"
-                            text_color = "#1B5E20"
-                        else:
-                            bg = "#FFCDD2" if is_sel else "#FFEBEE"
-                            border = "2px solid #B71C1C" if is_sel else "1px solid #E57373"
-                            text_color = "#B71C1C"
-                    else:
-                        bg, border, text_color = "#FAFAFA", "1px solid #eee", "#bbb"
-
-                    grid_html += (
-                        f"<div style='background-color:{bg}; border:{border}; color:{text_color}; "
-                        f"padding:10px 2px; border-radius:6px; font-weight:bold; font-size:12px;'>"
-                        f"{d_num}</div>"
-                    )
-                else:
-                    grid_html += "<div></div>"
-        grid_html += "</div>"
-        st.markdown(grid_html, unsafe_allow_html=True)
-
-        # 버튼 행 (캘린더 아래 7열)
-        for week in cal_matrix:
-            btn_cols = st.columns(7)
-            for idx, d_num in enumerate(week):
+            week_cols = st.columns(7)
+            for col_idx, d_num in enumerate(week):
                 if d_num == 0:
+                    week_cols[col_idx].markdown(" ")
                     continue
                 d_key = f"{render_year}-{render_month:02d}-{d_num:02d}"
                 d_date = date_type(render_year, render_month, d_num)
                 in_range = start_d <= d_date <= end_d
                 is_sel = (st.session_state.grp_selected_day == d_key)
-                lbl = "✔" if is_sel else " "
-                if btn_cols[idx].button(lbl, key=f"grp_day_{d_key}", use_container_width=True, disabled=not in_range):
+
+                if not in_range:
+                    week_cols[col_idx].markdown(
+                        f"<div style='text-align:center;color:#bbb;font-size:12px;"
+                        f"padding:8px 2px;'>{d_num}</div>",
+                        unsafe_allow_html=True
+                    )
+                    continue
+
+                # 색상 결정
+                is_green = colors.get(d_key, "red") == "green"
+                if is_green:
+                    bg   = "#A5D6A7" if is_sel else "#E8F5E9"
+                    tc   = "#1B5E20"
+                    bord = "2px solid #2E7D32" if is_sel else "1px solid #81C784"
+                else:
+                    bg   = "#EF9A9A" if is_sel else "#FFEBEE"
+                    tc   = "#B71C1C"
+                    bord = "2px solid #B71C1C" if is_sel else "1px solid #E57373"
+
+                lbl = f"✔{d_num}" if is_sel else str(d_num)
+                if week_cols[col_idx].button(
+                    lbl,
+                    key=f"grp_day_{d_key}",
+                    use_container_width=True,
+                ):
                     if is_sel:
                         st.session_state.grp_selected_day = None
                     else:
@@ -1112,72 +1100,73 @@ def page_group_room():
             sel_day = st.session_state.grp_selected_day
             if sel_day:
                 sel_parts = sel_day.split("-")
-                sel_y, sel_m, sel_d = int(sel_parts[0]), int(sel_parts[1]), int(sel_parts[2])
-                if (sel_y == render_year and sel_m == render_month and sel_d in week):
+                sel_y, sel_m, sel_d_num = int(sel_parts[0]), int(sel_parts[1]), int(sel_parts[2])
+                if (sel_y == render_year and sel_m == render_month and sel_d_num in week):
                     slots = st.session_state.grp_free_slots.get(sel_day, [False] * 96)
 
                     hc1, hc2 = st.columns([5, 1])
                     with hc1:
-                        st.markdown(f"#### ⏱️ {sel_y}년 {sel_m}월 {sel_d}일 시간대")
+                        st.markdown(f"#### ⏱️ {sel_y}년 {sel_m}월 {sel_d_num}일 시간대")
                     with hc2:
                         if st.button("✖", key=f"grp_close_{sel_day}"):
                             st.session_state.grp_selected_day = None
                             st.rerun()
 
-                    # 15분 단위 시간 막대 (24시간 × 4 = 96슬롯)
-                    bar_html = (
-                        "<div style='overflow-x:auto; -webkit-overflow-scrolling:touch;'>"
-                        "<div style='display:flex; flex-direction:column; gap:2px; min-width:300px; margin-bottom:10px;'>"
-                    )
-                    # 시간 레이블 + 막대
+                    # 15분 단위 시간 막대 빌드 (따옴표 충돌 없이)
+                    bar_rows = []
                     for hour in range(24):
-                        bar_html += (
-                            f"<div style='display:flex; align-items:center; gap:4px;'>"
-                            f"<span style='font-size:10px; color:#555; min-width:32px; text-align:right;'>{hour:02d}:00</span>"
-                            f"<div style='display:flex; flex:1; gap:1px;'>"
-                        )
-                        for minute_idx in range(4):  # 0,15,30,45분
-                            slot_i = hour * 4 + minute_idx
-                            available = slots[slot_i] if slot_i < len(slots) else False
-                            color_bg = "#4CAF50" if available else "#F44336"
-                            opacity = "1.0" if available else "0.6"
-                            minute_label = f"{minute_idx*15:02d}"
-                            bar_html += (
-                                f"<div style='background:{color_bg}; opacity:{opacity}; flex:1; height:16px; "
-                                f"border-radius:2px; title='{hour:02d}:{minute_label}'></div>"
+                        cells = []
+                        for mi in range(4):
+                            slot_i = hour * 4 + mi
+                            avail  = slots[slot_i] if slot_i < len(slots) else False
+                            cbg    = "#4CAF50" if avail else "#F44336"
+                            cells.append(
+                                f"<div style=\"background:{cbg};flex:1;height:18px;"
+                                f"border-radius:2px;margin:0 1px;\"></div>"
                             )
-                        bar_html += "</div></div>"
-                    bar_html += "</div></div>"
+                        bar_rows.append(
+                            f"<div style=\"display:flex;align-items:center;gap:4px;margin-bottom:2px;\">"
+                            f"<span style=\"font-size:10px;color:#555;min-width:34px;text-align:right;\">"
+                            f"{hour:02d}:00</span>"
+                            f"<div style=\"display:flex;flex:1;\">"
+                            + "".join(cells) +
+                            f"</div></div>"
+                        )
 
-                    # 범례
-                    bar_html += (
-                        "<div style='font-size:11px; color:#555; margin-bottom:8px;'>"
-                        "<span style='background:#4CAF50; padding:2px 8px; border-radius:3px; color:white; margin-right:8px;'>🟢 가능</span>"
-                        "<span style='background:#F44336; padding:2px 8px; border-radius:3px; color:white;'>🔴 불가</span>"
+                    bar_html = (
+                        "<div style=\"overflow-x:auto;-webkit-overflow-scrolling:touch;"
+                        "background:#fafafa;border:1px solid #ddd;border-radius:8px;"
+                        "padding:10px;margin-bottom:8px;\">"
+                        + "".join(bar_rows) +
+                        "</div>"
+                        "<div style=\"font-size:11px;color:#555;margin-bottom:8px;\">"
+                        "<span style=\"background:#4CAF50;padding:2px 8px;border-radius:3px;"
+                        "color:white;margin-right:8px;\">가능</span>"
+                        "<span style=\"background:#F44336;padding:2px 8px;border-radius:3px;"
+                        "color:white;\">불가</span>"
                         "</div>"
                     )
                     st.markdown(bar_html, unsafe_allow_html=True)
 
                     # 가능한 연속 시간대 요약
-                    s_idx = t_start * 4
-                    e_idx = t_end * 4
-                    avail_slots = [i for i in range(s_idx, e_idx) if i < len(slots) and slots[i]]
-                    if avail_slots:
+                    s_idx     = t_start * 4
+                    e_idx     = t_end * 4
+                    avail_sl  = [i for i in range(s_idx, e_idx) if i < len(slots) and slots[i]]
+                    if avail_sl:
                         ranges = []
-                        seg_s = avail_slots[0]
-                        seg_e = avail_slots[0]
-                        for i in avail_slots[1:]:
+                        seg_s = seg_e = avail_sl[0]
+                        for i in avail_sl[1:]:
                             if i == seg_e + 1:
                                 seg_e = i
                             else:
                                 ranges.append((seg_s, seg_e + 1))
                                 seg_s = seg_e = i
                         ranges.append((seg_s, seg_e + 1))
-
                         range_texts = [f"<b>{slot_to_time(rs)} ~ {slot_to_time(re)}</b>" for rs, re in ranges]
                         st.markdown(
-                            "<div style='background:#E8F5E9; border:1px solid #388E3C; border-radius:8px; "
-                            "padding:10px 12px; font-size:12px; color:#1B5E20; line-height:1.8;'>"
+                            "<div style='background:#E8F5E9;border:1px solid #388E3C;"
+                            "border-radius:8px;padding:10px 12px;font-size:12px;"
+                            "color:#1B5E20;line-height:1.8;'>"
                             "✅ 공통 가용 시간대: " + " | ".join(range_texts) + "</div>",
                             unsafe_allow_html=True
                         )
