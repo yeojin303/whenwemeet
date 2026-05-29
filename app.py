@@ -1025,7 +1025,7 @@ def page_group_room():
         unsafe_allow_html=True
     )
 
-    # ── 결과 캘린더 렌더링 ─────────────────────────
+    # ── 결과 캘린더 렌더링 (HTML 테이블 – 모바일 안전) ─────────────────────────
     render_year, render_month = start_d.year, start_d.month
     end_year, end_month = end_d.year, end_d.month
 
@@ -1033,68 +1033,74 @@ def page_group_room():
         cal_matrix = calendar.monthcalendar(render_year, render_month)
         cur_selected = st.session_state.get("grp_selected_day")
 
-        st.markdown(
-            f"<div style='font-weight:bold; font-size:15px; margin-bottom:4px;'>"
-            f"{render_year}년 {render_month}월</div>",
-            unsafe_allow_html=True
+        # HTML 캘린더 테이블 (날짜 셀만, 버튼은 별도)
+        cal_html = (
+            f"<div style='margin-bottom:4px; font-weight:bold; font-size:15px;'>"
+            f"{render_year}년 {render_month}월</div>"
+            "<table style='width:100%; border-collapse:separate; border-spacing:3px; table-layout:fixed;'>"
+            "<tr>"
         )
-
-        # 요일 헤더
         day_names = ["일", "월", "화", "수", "목", "금", "토"]
-        hd_cols = st.columns(7)
-        for i, dn in enumerate(day_names):
-            hd_cols[i].markdown(
-                f"<div style='text-align:center; font-size:12px; color:#555; font-weight:bold; padding:4px 0;'>{dn}</div>",
-                unsafe_allow_html=True
+        for dn in day_names:
+            cal_html += (
+                f"<th style='text-align:center; padding:6px 2px; font-size:12px; "
+                f"color:#555; font-weight:bold;'>{dn}</th>"
             )
+        cal_html += "</tr>"
 
-        # 날짜 행 — 셀(HTML) + 투명 버튼 겹침
         for week in cal_matrix:
-            week_cols = st.columns(7)
-            for idx, d_num in enumerate(week):
-                with week_cols[idx]:
-                    if d_num == 0:
-                        st.markdown("<div style='min-height:48px;'></div>", unsafe_allow_html=True)
-                        continue
+            cal_html += "<tr>"
+            for d_num in week:
+                if d_num == 0:
+                    cal_html += "<td></td>"
+                    continue
+                d_key = f"{render_year}-{render_month:02d}-{d_num:02d}"
+                d_date = date_type(render_year, render_month, d_num)
+                in_range = start_d <= d_date <= end_d
+                is_sel = (d_key == cur_selected)
 
-                    d_key = f"{render_year}-{render_month:02d}-{d_num:02d}"
-                    d_date = date_type(render_year, render_month, d_num)
-                    in_range = start_d <= d_date <= end_d
-                    is_sel = (d_key == cur_selected)
-
-                    if in_range:
-                        color_val = colors.get(d_key, "red")
-                        if color_val == "green":
-                            bg, txt = "#C8E6C9", "#1B5E20"
-                            bdr = "#1976D2" if is_sel else "#388E3C"
-                        else:
-                            bg, txt = "#FFCDD2", "#7F0000"
-                            bdr = "#1976D2" if is_sel else "#D32F2F"
-                        bw = "3px" if is_sel else "1.5px"
-                        shadow = "box-shadow:0 0 0 2px #1976D2;" if is_sel else ""
+                if in_range:
+                    color_val = colors.get(d_key, "red")
+                    if color_val == "green":
+                        bg, txt = "#C8E6C9", "#1B5E20"
+                        bdr = "#1976D2" if is_sel else "#388E3C"
                     else:
-                        bg, txt, bdr, bw, shadow = "#F5F5F5", "#bbb", "#ddd", "1px", ""
+                        bg, txt = "#FFCDD2", "#7F0000"
+                        bdr = "#1976D2" if is_sel else "#D32F2F"
+                    bw = "3px" if is_sel else "1px"
+                    shadow = "box-shadow:0 0 0 2px #1976D2;" if is_sel else ""
+                else:
+                    bg, txt, bdr, bw, shadow = "#F5F5F5", "#bbb", "#ddd", "1px", ""
 
-                    st.markdown(
-                        f"<div style='background:{bg}; color:{txt}; text-align:center; "
-                        f"min-height:48px; line-height:48px; border-radius:8px; "
-                        f"border:{bw} solid {bdr}; font-weight:bold; font-size:13px; {shadow}'>"
-                        f"{d_num}</div>",
-                        unsafe_allow_html=True
-                    )
+                cal_html += (
+                    f"<td style='background:{bg}; color:{txt}; text-align:center; "
+                    f"padding:8px 2px; border-radius:6px; border:{bw} solid {bdr}; "
+                    f"font-weight:bold; font-size:13px; {shadow}'>{d_num}</td>"
+                )
+            cal_html += "</tr>"
+        cal_html += "</table>"
+        st.markdown(cal_html, unsafe_allow_html=True)
 
-                    if in_range:
-                        st.markdown(
-                            "<style>.cell-btn>div>button{"
-                            "margin-top:-52px!important; height:52px!important; "
-                            "background:transparent!important; border:none!important; "
-                            "box-shadow:none!important; color:transparent!important; "
-                            "cursor:pointer!important; width:100%!important;}</style>",
-                            unsafe_allow_html=True
-                        )
-                        if st.button(" ", key=f"grp_day_{d_key}", use_container_width=True):
-                            st.session_state.grp_selected_day = None if is_sel else d_key
-                            st.rerun()
+        # 버튼 행: in_range 날짜만 (7열 columns 유지하되 빈 칸 처리)
+        for week in cal_matrix:
+            has_any = any(
+                d_num != 0 and start_d <= date_type(render_year, render_month, d_num) <= end_d
+                for d_num in week
+            )
+            if not has_any:
+                continue
+            btn_cols = st.columns(7)
+            for idx, d_num in enumerate(week):
+                if d_num == 0:
+                    continue
+                d_key = f"{render_year}-{render_month:02d}-{d_num:02d}"
+                d_date = date_type(render_year, render_month, d_num)
+                if start_d <= d_date <= end_d:
+                    is_sel = (d_key == cur_selected)
+                    lbl = "✔ 선택됨" if is_sel else "상세"
+                    if btn_cols[idx].button(lbl, key=f"grp_day_{d_key}", use_container_width=True):
+                        st.session_state.grp_selected_day = None if is_sel else d_key
+                        st.rerun()
 
         st.markdown("<br>", unsafe_allow_html=True)
         render_month += 1
