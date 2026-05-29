@@ -35,6 +35,33 @@ def hash_password(pw: str) -> str:
 
 
 # ════════════════════════════════════════════════
+# 캘린더 강제 7열 고정 CSS 주입
+# ════════════════════════════════════════════════
+st.html("""
+<style>
+    /* 모바일 환경에서도 columns가 아래로 떨어지지 않고 가로 7열 유지되도록 강제 설정 */
+    div[data-testid="stHorizontalBlock"] {
+        display: grid !important;
+        grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+        gap: 6px !important;
+    }
+    div[data-testid="stColumn"] {
+        width: 100% !important;
+        max-width: 100% !important;
+        flex: unset !important;
+    }
+    /* 버튼 텍스트 정렬 및 조절 */
+    div[data-testid="stButton"] button {
+        padding: 6px 2px !important;
+        min-height: 50px !important;
+        font-size: 13px !important;
+        white-space: pre-line !important;
+    }
+</style>
+""")
+
+
+# ════════════════════════════════════════════════
 # DB 헬퍼 함수
 # ════════════════════════════════════════════════
 
@@ -389,15 +416,15 @@ def page_account():
 
 
 # ════════════════════════════════════════════════
-# 홈 화면
+# 홈 화면 (가로 7열 완전 고정)
 # ════════════════════════════════════════════════
 def page_home():
     c1, c2 = st.columns([5, 2])
     with c2:
         st.caption(f"👤 {st.session_state.username}")
-        if st.button("로그아웃", use_container_width=True):
+        if st.button("로그아웃", use_container_width=True, key="home_logout_btn"):
             do_logout()
-        if st.button("⚙️ 계정 설정", use_container_width=True):
+        if st.button("⚙️ 계정 설정", use_container_width=True, key="home_account_btn"):
             st.session_state.app_page = "ACCOUNT"
             st.rerun()
     with c1:
@@ -408,43 +435,47 @@ def page_home():
 
     cal_matrix = calendar.monthcalendar(now.year, now.month)
     
-    # 순수 st.columns 레이아웃으로 홈 달력 교체
+    # 상단 요일 타이틀 (강제 7열)
     cols_header = st.columns(7)
     days_labels = ["일", "월", "화", "수", "목", "금", "토"]
     for i, l in enumerate(days_labels):
         cols_header[i].markdown(f"<p style='text-align:center; font-weight:bold; margin:0;'>{l}</p>", unsafe_allow_html=True)
 
-    for week in cal_matrix:
+    # 일자 그리드 출력 (강제 7열 고정 CSS 연동)
+    for idx_w, week in enumerate(cal_matrix):
         cols_week = st.columns(7)
         for col_idx, day_num in enumerate(week):
             if day_num != 0:
                 if day_num == now.day:
-                    cols_week[col_idx].button(f"⭐{day_num}\n(오늘)", key=f"home_day_{day_num}", use_container_width=True, type="primary")
+                    cols_week[col_idx].button(f"⭐{day_num}\n오늘", key=f"home_day_{day_num}_{idx_w}", use_container_width=True, type="primary")
                 else:
-                    cols_week[col_idx].button(f"{day_num}", key=f"home_day_{day_num}", use_container_width=True)
+                    cols_week[col_idx].button(f"{day_num}", key=f"home_day_{day_num}_{idx_w}", use_container_width=True)
             else:
                 cols_week[col_idx].markdown("<p style='text-align:center; color:#ccc; margin:0;'>-</p>", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("---")
+    
+    # 하단 메뉴 이동 버튼들 (얘네는 7열 그리드에 묶이지 않도록 별도 독립 가로 배치 처리)
+    st.html("<style>div.nav-box { display: flex; gap: 10px; width: 100%; }</style>")
     b1, b2 = st.columns(2)
     with b1:
-        if st.button("나의 일정", type="primary", use_container_width=True):
+        if st.button("📆 나의 일정 관리", type="primary", use_container_width=True):
             st.session_state.app_page = "MY_CALENDAR"
             st.rerun()
     with b2:
-        if st.button("📅 그룹 목록", use_container_width=True):
+        if st.button("👥 그룹 목록/대조", use_container_width=True):
             st.session_state.app_page = "GROUP_LIST"
             st.rerun()
 
 
 # ════════════════════════════════════════════════
-# 나의 일정 (순수 Streamlit Grid 구조 달력 + 하단 상세 결합)
+# 나의 일정 (가로 7열 완전 고정 달력 + 하단 상세 결합)
 # ════════════════════════════════════════════════
 def page_my_calendar():
     h1, h2 = st.columns([5, 2])
     with h2:
-        if st.button("홈으로", use_container_width=True):
+        if st.button("홈으로", use_container_width=True, key="mycal_to_home"):
             st.session_state.app_page = "HOME"
             st.rerun()
     with h1:
@@ -452,7 +483,7 @@ def page_my_calendar():
 
     n1, n2, n3 = st.columns([1, 4, 1])
     with n1:
-        if st.button("<", use_container_width=True):
+        if st.button("<", use_container_width=True, key="mycal_prev_month"):
             st.session_state.view_month -= 1
             if st.session_state.view_month == 0:
                 st.session_state.view_month = 12
@@ -467,7 +498,7 @@ def page_my_calendar():
             f"{st.session_state.view_month}월</h4>", unsafe_allow_html=True
         )
     with n3:
-        if st.button(">", use_container_width=True):
+        if st.button(">", use_container_width=True, key="mycal_next_month"):
             st.session_state.view_month += 1
             if st.session_state.view_month == 13:
                 st.session_state.view_month = 1
@@ -483,14 +514,14 @@ def page_my_calendar():
     cal_matrix = calendar.monthcalendar(cur_year, cur_month)
     active_day = st.session_state.get("active_add_day")
 
-    # [순수 7열 바둑판 구조 렌더링 - 상단 요일 타이틀]
+    # 상단 요일 타이틀 (강제 7열 고정)
     cols_header = st.columns(7)
     day_names = ["일", "월", "화", "수", "목", "금", "토"]
     for i, dn in enumerate(day_names):
         cols_header[i].markdown(f"<p style='text-align:center; font-weight:bold; margin:0;'>{dn}</p>", unsafe_allow_html=True)
 
-    # [순수 7열 바둑판 구조 렌더링 - 일자 버튼 그리드]
-    for week in cal_matrix:
+    # 일자 버튼 그리드 (강제 7열 고정)
+    for idx_w, week in enumerate(cal_matrix):
         cols_week = st.columns(7)
         for col_idx, day_num in enumerate(week):
             if day_num != 0:
@@ -498,13 +529,11 @@ def page_my_calendar():
                 is_today  = (day_num == today.day and cur_month == today.month and cur_year == today.year)
                 is_active = (active_day == day_num)
                 
-                # 일정 개수 체크
                 day_events = [
                     ev for ev in st.session_state.my_events
                     if ev["start"].split()[0] <= date_str <= ev["end"].split()[0]
                 ]
                 
-                # 버튼 라벨 빌드 (모바일 화면에 맞춰 매우 직관적으로 표기)
                 lbl = f"{day_num}"
                 if is_today:
                     lbl = f"⭐{day_num}"
@@ -513,9 +542,8 @@ def page_my_calendar():
                 if len(day_events) > 0:
                     lbl += f"\n({len(day_events)}건)"
                 
-                # 원터치 날짜 선택 버튼 자체를 달력 칸으로 사용
                 btn_type = "primary" if is_active or is_today else "secondary"
-                if cols_week[col_idx].button(lbl, key=f"my_cal_day_{date_str}", use_container_width=True, type=btn_type):
+                if cols_week[col_idx].button(lbl, key=f"my_cal_day_{date_str}_{idx_w}", use_container_width=True, type=btn_type):
                     if is_active:
                         st.session_state.active_add_day = None
                     else:
@@ -526,7 +554,7 @@ def page_my_calendar():
             else:
                 cols_week[col_idx].markdown("<p style='text-align:center; color:#eee; margin:0;'>-</p>", unsafe_allow_html=True)
 
-    # [상세 패널 분리 없이 바로 아래에 붙어서 열림]
+    # 하단 일자별 상세 설정 영역
     if active_day:
         add_day = active_day
         date_str_sel   = f"{cur_year}-{cur_month:02d}-{add_day:02d}"
@@ -536,19 +564,10 @@ def page_my_calendar():
         ]
 
         st.markdown("---")
-        hc1, hc2 = st.columns([5, 1])
-        with hc1:
-            st.markdown(f"#### 📅 {cur_year}년 {cur_month}월 {add_day}일 상세 일정")
-        with hc2:
-            if st.button("✖ 닫기", key="close_day_panel"):
-                st.session_state.active_add_day   = None
-                st.session_state.selected_event_id = None
-                st.session_state.editing_event_idx = None
-                st.rerun()
+        st.markdown(f"#### 📅 {cur_year}년 {cur_month}월 {add_day}일 상세 일정")
 
         if day_events_sel:
             for ev_i, ev in day_events_sel:
-                color   = ev.get("color", "#4D96FF")
                 s_t     = ev["start"].split()[1] if " " in ev["start"] else ""
                 e_t     = ev["end"].split()[1]   if " " in ev["end"]   else ""
                 ev_id   = ev.get("id") or f"idx_{ev_i}"
@@ -650,7 +669,7 @@ def page_my_calendar():
             st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("⚙️ 고정 시간표 관리", type="secondary", use_container_width=True):
+    if st.button("⚙️ 고정 주간 시간표 관리", type="secondary", use_container_width=True):
         st.session_state.app_page = "FIXED_TIMETABLE"
         st.rerun()
 
@@ -739,7 +758,7 @@ def page_fixed_timetable():
 def page_group_list():
     h1, h2 = st.columns([5, 2])
     with h2:
-        if st.button("홈으로", use_container_width=True):
+        if st.button("홈으로", use_container_width=True, key="grplist_to_home"):
             st.session_state.app_page = "HOME"
             st.rerun()
     with h1:
@@ -803,7 +822,7 @@ def page_group_list():
 
 
 # ════════════════════════════════════════════════
-# 그룹 방 (순수 Streamlit 7열 대조 달력 + 상세 분석 완벽 연동)
+# 그룹 방 (가로 7열 완전 고정 달력 + 상세 연동)
 # ════════════════════════════════════════════════
 def slot_to_time(i):
     return f"{i // 4:02d}:{(i % 4) * 15:02d}"
@@ -855,11 +874,11 @@ def page_group_room():
 
     h1, h2 = st.columns([5, 2])
     with h2:
-        if st.button("< 그룹 목록", use_container_width=True):
+        if st.button("< 그룹 목록", use_container_width=True, key="groom_to_list"):
             st.session_state.app_page = "GROUP_LIST"
             st.rerun()
         st.warning(f"코드: `{code}`")
-        if st.button("👥 참여자 보기", use_container_width=True):
+        if st.button("👥 참여자 보기", use_container_width=True, key="groom_view_members"):
             st.info(f"{len(g_members)}명: {', '.join(g_members.keys())}")
     with h1:
         st.title(f"🏢 {room_info['name']}")
@@ -962,19 +981,13 @@ def page_group_room():
     render_year, render_month = start_d.year, start_d.month
     end_year, end_month = end_d.year, end_d.month
 
-    # ── 헬퍼: 선택된 날짜의 상세 대조 분석 패널 함수 ──────────────
+    # 상세 분석 렌더링용 헬퍼 내부 함수
     def render_day_detail(sel_day):
         slots = st.session_state.grp_free_slots.get(sel_day, [False] * 96)
         year_s, month_s, day_s = map(int, sel_day.split("-"))
 
         st.markdown("---")
-        dc1, dc2 = st.columns([5, 1])
-        with dc1:
-            st.markdown(f"### 📊 {year_s}년 {month_s}월 {day_s}일 분석")
-        with dc2:
-            if st.button("✖ 닫기", key=f"grp_close_{sel_day}"):
-                st.session_state.grp_selected_day = None
-                st.rerun()
+        st.markdown(f"### 📊 {year_s}년 {month_s}월 {day_s}일 분석")
 
         bar_rows = []
         for hour in range(24):
@@ -1061,18 +1074,18 @@ def page_group_room():
                     st.success(f"🎉 약속 확정! {year_s}년 {month_s}월 {day_s}일 "
                                f"{slot_to_time(rs)} - {slot_to_time(re)}")
 
-    # ── 그룹 약속 대조 월별 달력 렌더링 시작 ──
+    # 그룹 달력 반복 루프 (강제 7열 고정 구조)
     while (render_year, render_month) <= (end_year, end_month):
         st.markdown(f"##### 📅 {render_year}년 {render_month}월")
         cal_matrix = calendar.monthcalendar(render_year, render_month)
 
-        # 상단 요일 헤더
+        # 요일 헤더
         cols_header = st.columns(7)
         for i, dn in enumerate(["일", "월", "화", "수", "목", "금", "토"]):
             cols_header[i].markdown(f"<p style='text-align:center; font-weight:bold; margin:0;'>{dn}</p>", unsafe_allow_html=True)
 
-        # 주별 버튼 바둑판 구조화
-        for week in cal_matrix:
+        # 주 단위 루프
+        for idx_w, week in enumerate(cal_matrix):
             cols_week = st.columns(7)
             for col_idx, d_num in enumerate(week):
                 if d_num != 0:
@@ -1081,7 +1094,6 @@ def page_group_room():
                     in_range = start_d <= d_date <= end_d
                     is_sel   = (st.session_state.grp_selected_day == d_key)
 
-                    # 상태 추출에 따른 원터치 버튼 텍스트 구성
                     if in_range:
                         status = "🟢가능" if colors.get(d_key, "red") == "green" else "🔴불가"
                         lbl = f"{d_num}\n{status}"
@@ -1093,15 +1105,14 @@ def page_group_room():
 
                     btn_type = "primary" if is_sel else "secondary"
                     
-                    # 날짜 선택 동작 원터치 바인딩
-                    if cols_week[col_idx].button(lbl, key=f"grp_cal_day_{d_key}", use_container_width=True, type=btn_type):
+                    if cols_week[col_idx].button(lbl, key=f"grp_cal_day_{d_key}_{idx_w}", use_container_width=True, type=btn_type):
                         if in_range:
                             st.session_state.grp_selected_day = None if is_sel else d_key
                             st.rerun()
                 else:
                     cols_week[col_idx].markdown("<p style='text-align:center; color:#eee; margin:0;'>-</p>", unsafe_allow_html=True)
 
-        # 구조 보존: 하단에 상세 분석 패널 결합 출력
+        # 하단 상세 판넬 연동 출력
         sel = st.session_state.grp_selected_day
         if sel:
             sp = sel.split("-")
@@ -1114,7 +1125,7 @@ def page_group_room():
             render_month = 1
             render_year += 1
 
-    # ── 요일별 공통 가용 시간표 ─────────────────────────
+    # 요일별 고정 시간표 대조 타임라인
     st.markdown("---")
     st.subheader("📊 요일별 공통 가용 시간표")
     t_start = st.session_state.get("grp_time_start", 9)
