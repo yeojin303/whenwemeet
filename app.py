@@ -18,81 +18,6 @@ supabase = get_supabase()
 
 st.set_page_config(page_title="When We Meet", page_icon="📅", layout="wide")
 
-st.markdown("""
-<style>
-
-/* ===== 모바일 캘린더 완벽 맞춤 ===== */
-@media (max-width: 768px) {
-
-    /* 전체 여백 축소 */
-    .block-container {
-        padding-left: 0.4rem !important;
-        padding-right: 0.4rem !important;
-    }
-
-    /* 가로 스크롤 제거 */
-    html, body, [data-testid="stAppViewContainer"] {
-        overflow-x: hidden !important;
-        width: 100% !important;
-    }
-
-    /* 달력 row */
-    div[data-testid="stHorizontalBlock"] {
-        display: flex !important;
-        flex-wrap: nowrap !important;
-        gap: 1px !important;
-        width: 100% !important;
-    }
-
-    /* 달력 column */
-    div[data-testid="column"] {
-        flex: 1 1 0 !important;
-        min-width: 0 !important;
-        padding: 0 !important;
-    }
-
-    /* 캘린더 칸 */
-    .calendar-cell {
-        min-height: 42px !important;
-        padding: 1px !important;
-        border-radius: 5px !important;
-        font-size: 8px !important;
-        overflow: hidden !important;
-    }
-
-    /* 날짜 숫자 */
-    .calendar-cell span {
-        font-size: 9px !important;
-    }
-
-    /* 일정 바 */
-    .calendar-cell div {
-        font-size: 6px !important;
-        margin-top: 1px !important;
-        padding: 0 1px !important;
-    }
-
-    /* 버튼 */
-    .stButton > button {
-        width: 100% !important;
-        min-height: 20px !important;
-        height: 20px !important;
-        font-size: 7px !important;
-        padding: 0 !important;
-        margin-top: 1px !important;
-    }
-
-    /* 헤더 */
-    h1 {
-        font-size: 1.25rem !important;
-    }
-
-    h4 {
-        font-size: 0.9rem !important;
-    }
-}
-</style>
-""", unsafe_allow_html=True)
 _LOCK = threading.Lock()
 calendar.setfirstweekday(6)
 
@@ -522,7 +447,7 @@ def page_home():
 
 
 # ════════════════════════════════════════════════
-# 나의 일정 (수정 완료)
+# 나의 일정 (수정 완료 - 모바일 최적화 완벽 대응)
 # ════════════════════════════════════════════════
 def page_my_calendar():
     h1, h2 = st.columns([5, 2])
@@ -568,19 +493,21 @@ def page_my_calendar():
 
     # ── 요일 헤더 ──────────────────────────────────────
     day_names = ["일", "월", "화", "수", "목", "금", "토"]
-    hdr_html = "<div style='display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:3px;'>"
+    hdr_html = "<div style='display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:3px; text-align:center;'>"
     for i, dn in enumerate(day_names):
         color = "#E53935" if i == 0 else ("#1565C0" if i == 6 else "#555")
-        hdr_html += f"<div style='text-align:center;font-size:12px;font-weight:bold;color:{color};padding:4px 0;'>{dn}</div>"
+        hdr_html += f"<div style='font-size:12px;font-weight:bold;color:{color};padding:4px 0;'>{dn}</div>"
     hdr_html += "</div>"
     st.markdown(hdr_html, unsafe_allow_html=True)
 
     # ── 주(week) 단위로 달력 행 + 상세패널 렌더 ──
     for week in cal_matrix:
-        cols = st.columns([1,1,1,1,1,1,1], gap="small")
+        # 모바일에서도 깨지지 않도록 CSS Grid로 한 주를 감싸줌
+        st.markdown('<div style="display:grid; grid-template-columns:repeat(7,1fr); gap:3px; margin-bottom:3px; align-items:start;">', unsafe_allow_html=True)
         
         for col_idx, day_num in enumerate(week):
             if day_num == 0:
+                st.markdown("<div></div>", unsafe_allow_html=True)
                 continue
                 
             date_str  = f"{cur_year}-{cur_month:02d}-{day_num:02d}"
@@ -607,23 +534,26 @@ def page_my_calendar():
             if len(day_events) > 2:
                 bars_html += f"<div style='font-size:8px;color:#999;margin-top:1px;'>+{len(day_events)-2}</div>"
 
-            with cols[col_idx]:
-                container_style = f"""
-                <div class="calendar-cell" style="background:{bg_color}; border:{border_w} solid {border_c}; border-radius:6px; padding:4px; text-align:center; min-height:65px;">
-                    <span style="font-size:11px; font-weight:bold; color:{num_color};">{'🌞 ' if is_today else ''}{day_num}</span>
-                    {bars_html}
-                </div>
-                """
-                st.markdown(container_style, unsafe_allow_html=True)
+            # 기존 디자인과 크기를 그대로 유지하도록 패딩 및 줄바꿈 조정
+            container_style = f"""
+            <div style="background:{bg_color}; border:{border_w} solid {border_c}; border-radius:6px; padding:4px 2px; text-align:center; min-height:65px; box-sizing:border-box;">
+                <span style="font-size:11px; font-weight:bold; color:{num_color};">{'🌞' if is_today else ''}{day_num}</span>
+                {bars_html}
+            </div>
+            """
+            st.markdown(container_style, unsafe_allow_html=True)
+            
+            # 버튼이 달력 상자 밑으로 밀려 깨지지 않도록 커스텀 스타일링 적용하여 셀 내부에 매칭
+            if st.button(" 선택 " if not is_active else " ✔ ", key=f"day_{date_str}", use_container_width=True):
+                if is_active:
+                    st.session_state.active_add_day = None
+                else:
+                    st.session_state.active_add_day = day_num
+                    st.session_state.selected_event_id = None
+                    st.session_state.editing_event_idx = None
+                st.rerun()
                 
-                if st.button(" 선택 " if not is_active else " ✔ ", key=f"day_{date_str}", use_container_width=True):
-                    if is_active:
-                        st.session_state.active_add_day = None
-                    else:
-                        st.session_state.active_add_day = day_num
-                        st.session_state.selected_event_id = None
-                        st.session_state.editing_event_idx = None
-                    st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
         # 구조 유지: 선택된 날짜가 있는 주(Week) 바로 아래에 상세 패널 등장
         if active_day and active_day in week:
@@ -915,7 +845,7 @@ def page_group_list():
 
 
 # ════════════════════════════════════════════════
-# 그룹 방 (수정 완료)
+# 그룹 방 (수정 완료 - 모바일 최적화 완벽 대응)
 # ════════════════════════════════════════════════
 def slot_to_time(i):
     return f"{i // 4:02d}:{(i % 4) * 15:02d}"
@@ -1183,17 +1113,19 @@ def page_group_room():
         st.markdown(f"##### 📅 {render_year}년 {render_month}월")
         cal_matrix = calendar.monthcalendar(render_year, render_month)
 
-        hdr = "<div style='display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:3px;'>"
+        hdr = "<div style='display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:3px; text-align:center;'>"
         for dn in ["일", "월", "화", "수", "목", "금", "토"]:
-            hdr += f"<div style='font-weight:bold;font-size:12px;padding:4px 0;text-align:center;'>{dn}</div>"
+            hdr += f"<div style='font-weight:bold;font-size:12px;padding:4px 0;'>{dn}</div>"
         hdr += "</div>"
         st.markdown(hdr, unsafe_allow_html=True)
 
         for week in cal_matrix:
-            cols = st.columns([1,1,1,1,1,1,1], gap="small")
+            # 그룹 매칭 달력도 모바일에서 찌그러지지 않고 화면 폭에 딱 맞도록 CSS Grid 구조 적용
+            st.markdown('<div style="display:grid; grid-template-columns:repeat(7,1fr); gap:3px; margin-bottom:3px; align-items:start;">', unsafe_allow_html=True)
             
             for col_idx, d_num in enumerate(week):
                 if d_num == 0:
+                    st.markdown("<div></div>", unsafe_allow_html=True)
                     continue
                     
                 d_key  = f"{render_year}-{render_month:02d}-{d_num:02d}"
@@ -1216,19 +1148,20 @@ def page_group_room():
                 else:
                     bg, border, status_lbl = "#FAFAFA", "1px solid #eee", "<span style='color:#bbb; font-size:9px;'>⚪제외</span>"
 
-                with cols[col_idx]:
-                    container_style = f"""
-                    <div class="calendar-cell" style="background:{bg}; border:{border}; padding:4px; text-align:center; border-radius:6px; min-height:55px;">
-                        <span style="font-size:11px; font-weight:bold; color:{num_color};">{d_num}</span><br>
-                        {status_lbl}
-                    </div>
-                    """
-                    st.markdown(container_style, unsafe_allow_html=True)
-                    
-                    if in_range:
-                        if st.button("확인" if not is_sel else "✔", key=f"grp_day_{d_key}", use_container_width=True):
-                            st.session_state.grp_selected_day = None if is_sel else d_key
-                            st.rerun()
+                container_style = f"""
+                <div style="background:{bg}; border:{border}; padding:4px 2px; text-align:center; border-radius:6px; min-height:55px; box-sizing:border-box;">
+                    <span style="font-size:11px; font-weight:bold; color:{num_color};">{d_num}</span><br>
+                    {status_lbl}
+                </div>
+                """
+                st.markdown(container_style, unsafe_allow_html=True)
+                
+                if in_range:
+                    if st.button("확인" if not is_sel else "✔", key=f"grp_day_{d_key}", use_container_width=True):
+                        st.session_state.grp_selected_day = None if is_sel else d_key
+                        st.rerun()
+
+            st.markdown('</div>', unsafe_allow_html=True)
 
             # 구조 유지: 날짜 버튼을 누른 주(Week) 바로 밑에 분석 패널 등장
             sel = st.session_state.grp_selected_day
