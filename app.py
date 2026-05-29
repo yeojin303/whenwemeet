@@ -447,7 +447,7 @@ def page_home():
 
 
 # ════════════════════════════════════════════════
-# 나의 일정 (수정 완료)
+# 나의 일정 (모바일 최적화 수정 완료)
 # ════════════════════════════════════════════════
 def page_my_calendar():
     h1, h2 = st.columns([5, 2])
@@ -501,11 +501,13 @@ def page_my_calendar():
     st.markdown(hdr_html, unsafe_allow_html=True)
 
     # ── 주(week) 단위로 달력 행 + 상세패널 렌더 ──
-    for week in cal_matrix:
-        cols = st.columns(7)
+    for week_idx, week in enumerate(cal_matrix):
+        # 모바일에서 한 줄로 깨지는 st.columns 대신 HTML Grid와 st.button 조합을 사용하여 가로 정렬 강제 고정
+        grid_html = f"<div style='display:grid; grid-template-columns:repeat(7, 1fr); gap:4px; margin-bottom:4px; width:100%;'>"
         
         for col_idx, day_num in enumerate(week):
             if day_num == 0:
+                grid_html += "<div></div>"
                 continue
                 
             date_str  = f"{cur_year}-{cur_month:02d}-{day_num:02d}"
@@ -532,23 +534,31 @@ def page_my_calendar():
             if len(day_events) > 2:
                 bars_html += f"<div style='font-size:8px;color:#999;margin-top:1px;'>+{len(day_events)-2}</div>"
 
-            with cols[col_idx]:
-                container_style = f"""
-                <div style="background:{bg_color}; border:{border_w} solid {border_c}; border-radius:6px; padding:4px; text-align:center; min-height:65px;">
-                    <span style="font-size:11px; font-weight:bold; color:{num_color};">{'🌞 ' if is_today else ''}{day_num}</span>
-                    {bars_html}
-                </div>
-                """
-                st.markdown(container_style, unsafe_allow_html=True)
-                
-                if st.button(" 선택 " if not is_active else " ✔ ", key=f"day_{date_str}", use_container_width=True):
-                    if is_active:
-                        st.session_state.active_add_day = None
-                    else:
-                        st.session_state.active_add_day = day_num
-                        st.session_state.selected_event_id = None
-                        st.session_state.editing_event_idx = None
-                    st.rerun()
+            container_style = f"""
+            <div style="background:{bg_color}; border:{border_w} solid {border_c}; border-radius:6px; padding:4px; text-align:center; min-height:65px; box-sizing:border-box;">
+                <span style="font-size:11px; font-weight:bold; color:{num_color};">{'🌞 ' if is_today else ''}{day_num}</span>
+                {bars_html}
+            </div>
+            """
+            grid_html += container_style
+        grid_html += "</div>"
+        st.markdown(grid_html, unsafe_allow_html=True)
+        
+        # 실제 클릭 상호작용을 위한 스트림릿 투명 버튼 배치 (가로 7칸 강제 고정)
+        btn_cols = st.columns(7)
+        for col_idx, day_num in enumerate(week):
+            if day_num != 0:
+                date_str = f"{cur_year}-{cur_month:02d}-{day_num:02d}"
+                is_active = (active_day == day_num)
+                with btn_cols[col_idx]:
+                    if st.button(" 선택 " if not is_active else " ✔ ", key=f"day_{date_str}", use_container_width=True):
+                        if is_active:
+                            st.session_state.active_add_day = None
+                        else:
+                            st.session_state.active_add_day = day_num
+                            st.session_state.selected_event_id = None
+                            st.session_state.editing_event_idx = None
+                        st.rerun()
 
         # 구조 유지: 선택된 날짜가 있는 주(Week) 바로 아래에 상세 패널 등장
         if active_day and active_day in week:
@@ -618,7 +628,7 @@ def page_my_calendar():
                             e_t_obj = datetime.strptime("18:00", "%H:%M").time()
 
                         with st.form(f"edit_event_form_{ev_id}"):
-                            new_title  = st.text_input("일정 제목", value=ev["title"])
+                            new_title = st.text_input("일정 제목", value=ev["title"])
                             c1, c2     = st.columns(2)
                             new_s_date = c1.date_input("시작 날짜", value=s_d_obj)
                             new_s_time = c2.time_input("시작 시간", value=s_t_obj)
@@ -840,7 +850,7 @@ def page_group_list():
 
 
 # ════════════════════════════════════════════════
-# 그룹 방 (수정 완료)
+# 그룹 방 (모바일 최적화 수정 완료)
 # ════════════════════════════════════════════════
 def slot_to_time(i):
     return f"{i // 4:02d}:{(i % 4) * 15:02d}"
@@ -1115,10 +1125,12 @@ def page_group_room():
         st.markdown(hdr, unsafe_allow_html=True)
 
         for week in cal_matrix:
-            cols = st.columns(7)
+            # 모바일에서도 무조건 가로 7칸 달력 형태를 보존하기 위해 HTML Grid 삽입
+            grid_html = f"<div style='display:grid; grid-template-columns:repeat(7, 1fr); gap:4px; margin-bottom:4px; width:100%;'>"
             
             for col_idx, d_num in enumerate(week):
                 if d_num == 0:
+                    grid_html += "<div></div>"
                     continue
                     
                 d_key  = f"{render_year}-{render_month:02d}-{d_num:02d}"
@@ -1141,19 +1153,29 @@ def page_group_room():
                 else:
                     bg, border, status_lbl = "#FAFAFA", "1px solid #eee", "<span style='color:#bbb; font-size:9px;'>⚪제외</span>"
 
-                with cols[col_idx]:
-                    container_style = f"""
-                    <div style="background:{bg}; border:{border}; padding:4px; text-align:center; border-radius:6px; min-height:55px;">
-                        <span style="font-size:11px; font-weight:bold; color:{num_color};">{d_num}</span><br>
-                        {status_lbl}
-                    </div>
-                    """
-                    st.markdown(container_style, unsafe_allow_html=True)
-                    
-                    if in_range:
-                        if st.button("확인" if not is_sel else "✔", key=f"grp_day_{d_key}", use_container_width=True):
-                            st.session_state.grp_selected_day = None if is_sel else d_key
-                            st.rerun()
+                container_style = f"""
+                <div style="background:{bg}; border:{border}; padding:4px; text-align:center; border-radius:6px; min-height:55px; box-sizing:border-box;">
+                    <span style="font-size:11px; font-weight:bold; color:{num_color};">{d_num}</span><br>
+                    {status_lbl}
+                </div>
+                """
+                grid_html += container_style
+            grid_html += "</div>"
+            st.markdown(grid_html, unsafe_allow_html=True)
+            
+            # 실제 상호작용 가능한 스트림릿 투명 버튼 (가로 7줄 고정)
+            btn_cols = st.columns(7)
+            for col_idx, d_num in enumerate(week):
+                if d_num != 0:
+                    d_key = f"{render_year}-{render_month:02d}-{d_num:02d}"
+                    d_date = date_type(render_year, render_month, d_num)
+                    in_range = start_d <= d_date <= end_d
+                    is_sel = (st.session_state.grp_selected_day == d_key)
+                    with btn_cols[col_idx]:
+                        if in_range:
+                            if st.button("확인" if not is_sel else "✔", key=f"grp_day_{d_key}", use_container_width=True):
+                                st.session_state.grp_selected_day = None if is_sel else d_key
+                                st.rerun()
 
             # 구조 유지: 날짜 버튼을 누른 주(Week) 바로 밑에 분석 패널 등장
             sel = st.session_state.grp_selected_day
