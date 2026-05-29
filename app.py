@@ -533,12 +533,13 @@ def page_my_calendar():
                 bars_html += f"<div style='font-size:8px;color:#999;margin-top:1px;'>+{len(day_events)-2}</div>"
 
             with cols[col_idx]:
-                container_style = f"""
-                <div style="background:{bg_color}; border:{border_w} solid {border_c}; border-radius:6px; padding:4px; text-align:center; min-height:65px;">
-                    <span style="font-size:11px; font-weight:bold; color:{num_color};">{'🌞 ' if is_today else ''}{day_num}</span>
-                    {bars_html}
-                </div>
-                """
+                # 🛠️ [수정반영 완료] 모바일 가독성 및 마크다운 깨짐 방지를 위한 단일 f-string 화
+                container_style = (
+                    f'<div style="background:{bg_color}; border:{border_w} solid {border_c}; border-radius:6px; padding:4px; text-align:center; min-height:65px;">'
+                    f'<span style="font-size:11px; font-weight:bold; color:{num_color};">{"🌞 " if is_today else ""}{day_num}</span>'
+                    f'{bars_html}'
+                    f'</div>'
+                )
                 st.markdown(container_style, unsafe_allow_html=True)
                 
                 if st.button(" 선택 " if not is_active else " ✔ ", key=f"day_{date_str}", use_container_width=True):
@@ -1142,12 +1143,13 @@ def page_group_room():
                     bg, border, status_lbl = "#FAFAFA", "1px solid #eee", "<span style='color:#bbb; font-size:9px;'>⚪제외</span>"
 
                 with cols[col_idx]:
-                    container_style = f"""
-                    <div style="background:{bg}; border:{border}; padding:4px; text-align:center; border-radius:6px; min-height:55px;">
-                        <span style="font-size:11px; font-weight:bold; color:{num_color};">{d_num}</span><br>
-                        {status_lbl}
-                    </div>
-                    """
+                    # 🛠️ [수정반영 완료] 모바일 가독성 및 마크다운 깨짐 방지를 위한 단일 f-string 화
+                    container_style = (
+                        f'<div style="background:{bg}; border:{border}; padding:4px; text-align:center; border-radius:6px; min-height:55px;">'
+                        f'<span style="font-size:11px; font-weight:bold; color:{num_color};">{d_num}</span><br>'
+                        f'{status_lbl}'
+                        f'</div>'
+                    )
                     st.markdown(container_style, unsafe_allow_html=True)
                     
                     if in_range:
