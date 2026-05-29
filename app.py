@@ -18,28 +18,39 @@ supabase = get_supabase()
 
 st.set_page_config(page_title="When We Meet", page_icon="📅", layout="wide")
 
-# 🔥 [모바일 한눈에 보기 치트키] 핸드폰 좁은 화면에서도 가로 7줄이 쪼개지지 않고 강제로 한 줄에 정렬되도록 CSS 주입
+# 🔥 [모바일 화면 맞춤형 달력 Grid 치트키] 
+# 폰 화면 폭에 딱 맞추면서도, 7열 달력 구조가 밑으로 깨져서 찢어지지 않도록 모바일 레이아웃 강제 최적화
 st.markdown("""
 <style>
-    /* Streamlit의 컬럼 레이아웃 가로 정렬 강제 유지 (모바일 자동 줄바꿈 방지) */
+    /* 1. Streamlit 컬럼 레이아웃이 모바일에서 세로로 찢어지는 현상 방지 (7열 격자 유지) */
     div[data-testid="stHorizontalBlock"] {
         display: flex !important;
         flex-direction: row !important;
         flex-wrap: nowrap !important;
         width: 100% !important;
-        gap: 2px !important;
+        gap: 3px !important;
+        padding: 0 !important;
     }
     div[data-testid="column"] {
         flex: 1 !important;
         min-width: 0 !important;
         padding: 0 !important;
     }
-    /* 버튼 폰트 크기 모바일 최적화 및 여백 제거 */
+    
+    /* 2. 모바일 전용 캘린더 내부 요소 크기 및 패딩 최적화 (화면 탈출 방지) */
     div.stButton > button {
         font-size: 10px !important;
-        padding: 2px 4px !important;
+        padding: 1px 2px !important;
         margin: 0 !important;
-        min-height: 24px !important;
+        min-height: 22px !important;
+        max-height: 25px !important;
+    }
+    
+    /* 3. 모바일 가로 스크롤 방지 및 전체 컨테이너 여백 축소 */
+    .block-container {
+        padding-left: 8px !important;
+        padding-right: 8px !important;
+        padding-top: 1rem !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -473,7 +484,7 @@ def page_home():
 
 
 # ════════════════════════════════════════════════
-# 나의 일정 (모바일 대응 + 구조 유지)
+# 나의 일정 (컴팩트 7열 달력 형태 폰 최적화)
 # ════════════════════════════════════════════════
 def page_my_calendar():
     h1, h2 = st.columns([5, 2])
@@ -517,21 +528,21 @@ def page_my_calendar():
     cal_matrix = calendar.monthcalendar(cur_year, cur_month)
     active_day = st.session_state.get("active_add_day")
 
-    # 요일 헤더 (모바일에서도 강제 한 줄 가로정렬 유지)
+    # 요일 헤더 (폰 화면에 밀리지 않게 최적 패딩 처리)
     day_names = ["일", "월", "화", "수", "목", "금", "토"]
     cols_hdr = st.columns(7)
     for i, dn in enumerate(day_names):
         color = "#E53935" if i == 0 else ("#1565C0" if i == 6 else "#555")
         cols_hdr[i].markdown(f"<div style='text-align:center;font-size:11px;font-weight:bold;color:{color};'>{dn}</div>", unsafe_allow_html=True)
 
-    # 주(week) 단위로 달력 렌더
+    # 주(week) 단위로 달력 격자 렌더
     for week in cal_matrix:
         cols = st.columns(7)
         
         for col_idx, day_num in enumerate(week):
             if day_num == 0:
                 with cols[col_idx]:
-                    st.markdown("<div style='min-height:45px;'></div>", unsafe_allow_html=True)
+                    st.markdown("<div style='min-height:42px;'></div>", unsafe_allow_html=True)
                 continue
                 
             date_str  = f"{cur_year}-{cur_month:02d}-{day_num:02d}"
@@ -550,24 +561,26 @@ def page_my_calendar():
                 if ev["start"].split()[0] <= date_str <= ev["end"].split()[0]
             ]
             
+            # 모바일 캘린더 모양 유지를 위한 미니 점표시/요약바
             bars_html = ""
-            for ev in day_events[:1]: # 모바일 한눈에 보기를 위해 일정 바 노출 최소화
-                c = ev.get("color", "#4D96FF")
-                t_short = ev["title"][:2] + (".." if len(ev["title"]) > 2 else "")
-                bars_html += f"<div style='background:{c};color:white;font-size:7px;border-radius:1px;padding:1px;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>{t_short}</div>"
-            if len(day_events) > 1:
-                bars_html += f"<div style='font-size:7px;color:#999;transform:scale(0.9); text-align:center;'>+{len(day_events)-1}</div>"
+            if day_events:
+                c = day_events[0].get("color", "#4D96FF")
+                bars_html += f"<div style='background:{c};height:4px;border-radius:2px;margin:2px auto 0 auto;width:80%;'></div>"
+                if len(day_events) > 1:
+                    bars_html += f"<div style='font-size:7px;color:#777;line-height:1;margin-top:1px;'>+{len(day_events)-1}</div>"
+            else:
+                bars_html += "<div style='height:4px;'></div>"
 
             with cols[col_idx]:
                 container_style = f"""
-                <div style="background:{bg_color}; border:{border_w} solid {border_c}; border-radius:4px; padding:2px; text-align:center; min-height:45px; display:flex; flex-direction:column; justify-content:space-between;">
-                    <span style="font-size:10px; font-weight:bold; color:{num_color};">{day_num}</span>
+                <div style="background:{bg_color}; border:{border_w} solid {border_c}; border-radius:4px; padding:2px 1px; text-align:center; min-height:42px; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+                    <span style="font-size:11px; font-weight:bold; color:{num_color}; line-height:1;">{day_num}</span>
                     {bars_html}
                 </div>
                 """
                 st.markdown(container_style, unsafe_allow_html=True)
                 
-                # 가독성을 극대화한 모바일 컴팩트 버튼 배치
+                # 폰 화면 맞춤형 컴팩트 선택 버튼
                 if st.button("선택" if not is_active else "✔", key=f"day_{date_str}", use_container_width=True):
                     if is_active:
                         st.session_state.active_add_day = None
@@ -577,7 +590,7 @@ def page_my_calendar():
                         st.session_state.editing_event_idx = None
                     st.rerun()
 
-        # 🔥 사용자가 너무 좋아하는 주(Week) 바로 밑에 상세 창 뜨는 구조 완벽 유지!
+        # 🔥 대호평! 주(Week) 바로 밑에 상세 칸이 나타나는 구조 200% 완벽 유지
         if active_day and active_day in week:
             add_day = active_day
             date_str_sel   = f"{cur_year}-{cur_month:02d}-{add_day:02d}"
@@ -868,7 +881,7 @@ def page_group_list():
 
 
 # ════════════════════════════════════════════════
-# 그룹 방 (모바일 대응 + 구조 유지)
+# 그룹 방 (캘린더 형식 완전 유지 + 폰 맞춤형 최적화)
 # ════════════════════════════════════════════════
 def slot_to_time(i):
     return f"{i // 4:02d}:{(i % 4) * 15:02d}"
@@ -1021,7 +1034,7 @@ def page_group_room():
 
     st.markdown("### 📅 일정 대조 달력")
     st.markdown(
-        "<div style='font-size:11px; margin-bottom:8px; color:#555; text-align:center;'>"
+        "<div style='font-size:10px; margin-bottom:6px; color:#555; text-align:center;'>"
         "🟢가능 | 🔴불가 | ⚪제외</div>",
         unsafe_allow_html=True
     )
@@ -1032,7 +1045,7 @@ def page_group_room():
     render_year, render_month = start_d.year, start_d.month
     end_year, end_month = end_d.year, end_d.month
 
-    # ── 헬퍼: 선택된 날짜의 상세 패널 렌더 ──────────────
+    # ── 선택된 날짜 상세 분석 패널 렌더링 ──────────────
     def render_day_detail(sel_day):
         slots = st.session_state.grp_free_slots.get(sel_day, [False] * 96)
         year_s, month_s, day_s = map(int, sel_day.split("-"))
@@ -1131,7 +1144,7 @@ def page_group_room():
                     st.success(f"🎉 약속 확정! {year_s}년 {month_s}월 {day_s}일 "
                                f"{slot_to_time(rs)} - {slot_to_time(re)}")
 
-    # 월별 달력 렌더링
+    # 그룹용 달력 월별 렌더링 (폰 맞춤형 7열 고정 격자)
     while (render_year, render_month) <= (end_year, end_month):
         st.markdown(f"##### 📅 {render_year}년 {render_month}월")
         cal_matrix = calendar.monthcalendar(render_year, render_month)
@@ -1146,7 +1159,7 @@ def page_group_room():
             for col_idx, d_num in enumerate(week):
                 if d_num == 0:
                     with cols[col_idx]:
-                        st.markdown("<div style='min-height:38px;'></div>", unsafe_allow_html=True)
+                        st.markdown("<div style='min-height:36px;'></div>", unsafe_allow_html=True)
                     continue
                     
                 d_key  = f"{render_year}-{render_month:02d}-{d_num:02d}"
@@ -1161,18 +1174,18 @@ def page_group_room():
                     if colors.get(d_key, "red") == "green":
                         bg = "#C8E6C9" if is_sel else "#E8F5E9"
                         border = "2px solid #2E7D32" if is_sel else "1px solid #81C784"
-                        status_lbl = "<span style='color:#2E7D32; font-size:8px; transform:scale(0.9); display:block;'>🟢가능</span>"
+                        status_lbl = "<span style='color:#2E7D32; font-size:8px;'>🟢가능</span>"
                     else:
                         bg = "#FFCDD2" if is_sel else "#FFEBEE"
                         border = "2px solid #B71C1C" if is_sel else "1px solid #E57373"
-                        status_lbl = "<span style='color:#C62828; font-size:8px; transform:scale(0.9); display:block;'>🔴불가</span>"
+                        status_lbl = "<span style='color:#C62828; font-size:8px;'>🔴불가</span>"
                 else:
-                    bg, border, status_lbl = "#FAFAFA", "1px solid #eee", "<span style='color:#bbb; font-size:8px; transform:scale(0.9); display:block;'>⚪제외</span>"
+                    bg, border, status_lbl = "#FAFAFA", "1px solid #eee", "<span style='color:#bbb; font-size:8px;'>⚪제외</span>"
 
                 with cols[col_idx]:
                     container_style = f"""
-                    <div style="background:{bg}; border:{border}; padding:2px; text-align:center; border-radius:4px; min-height:38px; display:flex; flex-direction:column; justify-content:space-between;">
-                        <span style="font-size:10px; font-weight:bold; color:{num_color};">{d_num}</span>
+                    <div style="background:{bg}; border:{border}; padding:2px 1px; text-align:center; border-radius:4px; min-height:36px; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+                        <span style="font-size:10px; font-weight:bold; color:{num_color}; line-height:1;">{d_num}</span>
                         {status_lbl}
                     </div>
                     """
@@ -1183,7 +1196,7 @@ def page_group_room():
                             st.session_state.grp_selected_day = None if is_sel else d_key
                             st.rerun()
 
-            # 🔥 사용자가 원하는 주(Week) 바로 밑에 분석창 구조 완벽 유지
+            # 🔥 사용자가 최애하는 주(Week) 바로 밑에 분석 상세창 뜨는 구조 완벽하게 보존
             sel = st.session_state.grp_selected_day
             if sel:
                 sp = sel.split("-")
