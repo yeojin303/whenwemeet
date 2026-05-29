@@ -408,7 +408,6 @@ def page_home():
 
     cal_matrix = calendar.monthcalendar(now.year, now.month)
     
-    # 모바일 브라우저에서도 깨지지 않는 HTML Grid 기반 달력
     cal_html = """
     <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center;">
     """
@@ -492,7 +491,6 @@ def page_my_calendar():
     cal_matrix = calendar.monthcalendar(cur_year, cur_month)
     active_day = st.session_state.get("active_add_day")
 
-    # ── 요일 헤더 ──────────────────────────────────────
     day_names = ["일", "월", "화", "수", "목", "금", "토"]
     hdr_html = "<div style='display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:3px;'>"
     for i, dn in enumerate(day_names):
@@ -501,82 +499,83 @@ def page_my_calendar():
     hdr_html += "</div>"
     st.markdown(hdr_html, unsafe_allow_html=True)
 
-    # ── 주(week) 단위로 달력 행 + 버튼 + 상세패널을 한 묶음으로 렌더 ──
+    # 투명 버튼을 이용해 HTML 그리드 칸 전체를 클릭할 수 있도록 스타일 통합
+    st.markdown("""
+        <style>
+        .stButton button[key^="day_btn_"] {
+            background: transparent !important;
+            border: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            text-align: left !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
     for week in cal_matrix:
-        # 이 주의 달력 한 행 (HTML grid)
-        row_html = "<div style='display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:2px;'>"
-        for col_idx, day_num in enumerate(week):
-            if day_num == 0:
-                row_html += "<div style='min-height:68px;'></div>"
-                continue
-            date_str  = f"{cur_year}-{cur_month:02d}-{day_num:02d}"
-            is_today  = (day_num == today.day and cur_month == today.month and cur_year == today.year)
-            is_active = (active_day == day_num)
-            is_sun    = (col_idx == 0)
-            is_sat    = (col_idx == 6)
-
-            num_color    = "#E53935" if is_sun else ("#1565C0" if is_sat else "#212121")
-            border_color = "#1976D2" if is_active else "#e0e0e0"
-            bg_color     = "#EEF4FF" if is_active else "white"
-            border_w     = "2px" if is_active else "1px"
-
-            if is_today:
-                num_html = (
-                    f"<div style='display:inline-block;background:#1976D2;color:white;"
-                    f"border-radius:50%;width:18px;height:18px;line-height:18px;"
-                    f"text-align:center;font-size:10px;font-weight:700;'>{day_num}</div>"
-                )
-            else:
-                num_html = f"<div style='font-size:11px;font-weight:600;color:{num_color};text-align:center;'>{day_num}</div>"
-
-            day_events = [
-                ev for ev in st.session_state.my_events
-                if ev["start"].split()[0] <= date_str <= ev["end"].split()[0]
-            ]
-            bars_html = ""
-            for ev in day_events[:2]:
-                c       = ev.get("color", "#4D96FF")
-                t_short = ev["title"][:4] + ("…" if len(ev["title"]) > 4 else "")
-                bars_html += (
-                    f"<div style='background:{c};color:white;font-size:7px;font-weight:600;"
-                    f"border-radius:2px;padding:1px 2px;margin-top:1px;"
-                    f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:12px;'>"
-                    f"{t_short}</div>"
-                )
-            if len(day_events) > 2:
-                bars_html += f"<div style='font-size:7px;color:#999;margin-top:1px;'>+{len(day_events)-2}</div>"
-            active_mark = "<div style='font-size:8px;color:#1976D2;text-align:right;'>✔</div>" if is_active else ""
-
-            row_html += (
-                f"<div style='background:{bg_color};border:{border_w} solid {border_color};"
-                f"border-radius:6px;padding:3px 2px;min-height:68px;'>"
-                f"{num_html}{bars_html}{active_mark}</div>"
-            )
-        row_html += "</div>"
-        st.markdown(row_html, unsafe_allow_html=True)
-
-        # 이 주의 버튼 행 (달력 행 바로 아래 — 같은 컨테이너 흐름)
-        btn_cols = st.columns(7)
+        cols = st.columns(7)
         for col_idx, day_num in enumerate(week):
             if day_num == 0:
                 continue
-            date_str  = f"{cur_year}-{cur_month:02d}-{day_num:02d}"
-            is_active = (active_day == day_num)
-            if btn_cols[col_idx].button(
-                "✔" if is_active else str(day_num),
-                key=f"day_{date_str}",
-                use_container_width=True,
-                type="secondary"
-            ):
-                if is_active:
-                    st.session_state.active_add_day = None
+            
+            with cols[col_idx]:
+                date_str  = f"{cur_year}-{cur_month:02d}-{day_num:02d}"
+                is_today  = (day_num == today.day and cur_month == today.month and cur_year == today.year)
+                is_active = (active_day == day_num)
+                is_sun    = (col_idx == 0)
+                is_sat    = (col_idx == 6)
+
+                num_color    = "#E53935" if is_sun else ("#1565C0" if is_sat else "#212121")
+                border_color = "#1976D2" if is_active else "#e0e0e0"
+                bg_color     = "#EEF4FF" if is_active else "white"
+                border_w     = "2px" if is_active else "1px"
+
+                if is_today:
+                    num_html = (
+                        f"<div style='display:inline-block;background:#1976D2;color:white;"
+                        f"border-radius:50%;width:18px;height:18px;line-height:18px;"
+                        f"text-align:center;font-size:10px;font-weight:700;'>{day_num}</div>"
+                    )
                 else:
-                    st.session_state.active_add_day = day_num
-                    st.session_state.selected_event_id = None
-                    st.session_state.editing_event_idx = None
-                st.rerun()
+                    num_html = f"<div style='font-size:11px;font-weight:600;color:{num_color};text-align:center;'>{day_num}</div>"
 
-        # 이 주에 선택된 날짜가 있으면 버튼 행 바로 아래에 상세패널
+                day_events = [
+                    ev for ev in st.session_state.my_events
+                    if ev["start"].split()[0] <= date_str <= ev["end"].split()[0]
+                ]
+                bars_html = ""
+                for ev in day_events[:2]:
+                    c       = ev.get("color", "#4D96FF")
+                    t_short = ev["title"][:4] + ("…" if len(ev["title"]) > 4 else "")
+                    bars_html += (
+                        f"<div style='background:{c};color:white;font-size:7px;font-weight:600;"
+                        f"border-radius:2px;padding:1px 2px;margin-top:1px;"
+                        f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:12px;'>"
+                        f"{t_short}</div>"
+                    )
+                if len(day_events) > 2:
+                    bars_html += f"<div style='font-size:7px;color:#999;margin-top:1px;'>+{len(day_events)-2}</div>"
+                active_mark = "<div style='font-size:8px;color:#1976D2;text-align:right;'>✔</div>" if is_active else ""
+
+                cell_html = (
+                    f"<div style='background:{bg_color};border:{border_w} solid {border_color};"
+                    f"border-radius:6px;padding:5px 3px;min-height:75px;cursor:pointer;box-sizing:border-box;'>"
+                    f"{num_html}{bars_html}{active_mark}</div>"
+                )
+                
+                # 칸 전체를 감싸는 커스텀 스타일 버튼 실행
+                if st.button(cell_html, key=f"day_btn_{date_str}", use_container_width=True):
+                    if is_active:
+                        st.session_state.active_add_day = None
+                    else:
+                        st.session_state.active_add_day = day_num
+                        st.session_state.selected_event_id = None
+                        st.session_state.editing_event_idx = None
+                    st.rerun()
+
+        # 상세 패널이 활성화된 날이 속한 주 바로 밑에 렌더링되도록 유지
         if active_day and active_day in week:
             add_day = active_day
             date_str_sel   = f"{cur_year}-{cur_month:02d}-{add_day:02d}"
@@ -588,7 +587,7 @@ def page_my_calendar():
             st.markdown("---")
             hc1, hc2 = st.columns([5, 1])
             with hc1:
-                st.markdown(f"#### 📅 {cur_year}년 {cur_month}월 {add_day}일")
+                st.markdown(f"#### 📅 {cur_year}년 {cur_month}월 {add_day}일 상세 정보")
             with hc2:
                 if st.button("✖ 닫기", key="close_day_panel"):
                     st.session_state.active_add_day   = None
@@ -712,6 +711,7 @@ def page_my_calendar():
             elif do_cancel:
                 st.session_state.active_add_day = None
                 st.rerun()
+
     if st.button("⚙️ 고정 시간표 관리", type="secondary", use_container_width=True):
         st.session_state.app_page = "FIXED_TIMETABLE"
         st.rerun()
@@ -868,12 +868,10 @@ def page_group_list():
 # 그룹 방 - 모바일 친화형 그리드 캘린더 대조 뷰
 # ════════════════════════════════════════════════
 def slot_to_time(i):
-    """15분 단위 슬롯 인덱스 -> HH:MM"""
     return f"{i // 4:02d}:{(i % 4) * 15:02d}"
 
 
 def compute_free_slots(g_members, year, month, day, time_start_h, time_end_h):
-    """특정 날짜의 15분 단위 가용 여부 계산 (96슬롯 = 24h x 4)"""
     from datetime import date as date_type
     curr_date = date_type(year, month, day)
     w_str = ["월", "화", "수", "목", "금", "토", "일"][curr_date.weekday()]
@@ -1027,7 +1025,6 @@ def page_group_room():
         unsafe_allow_html=True
     )
 
-    # 선택된 날짜 state 초기화
     if "grp_selected_day" not in st.session_state:
         st.session_state.grp_selected_day = None
 
@@ -1048,7 +1045,6 @@ def page_group_room():
                 st.session_state.grp_selected_day = None
                 st.rerun()
 
-        # 15분 단위 시간 막대 (HTML, 따옴표 충돌 없이 큰따옴표 통일)
         bar_rows = []
         for hour in range(24):
             cells = "".join(
@@ -1075,7 +1071,6 @@ def page_group_room():
         )
         st.markdown(bar_html, unsafe_allow_html=True)
 
-        # 가용 시간대 분석
         s_idx = t_start * 4
         e_idx = t_end * 4
         avail_slots = [i for i in range(s_idx, e_idx) if i < len(slots) and slots[i]]
@@ -1103,7 +1098,6 @@ def page_group_room():
             )
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # 시간 직접 설정 기능
             st.markdown("##### ⏰ 시간 직접 설정하여 확정하기")
             time_options = [f"{h:02d}:{m:02d}" for h in range(24) for m in [0, 15, 30, 45]]
             c_custom1, c_custom2 = st.columns(2)
@@ -1123,6 +1117,8 @@ def page_group_room():
 
             st.markdown("---")
             st.markdown("##### ✨ 가용 시간대 목록에서 바로 선택하기")
+            
+            # 버그 수정: 불필요한 공백을 만드는 루프 외곽 컴포넌트 제거 및 정확한 버튼 배치 고정
             for idx, (rs, re) in enumerate(ranges):
                 duration_min = (re - rs) * 15
                 dur_str = (f"{duration_min // 60}시간 {duration_min % 60}분"
@@ -1136,73 +1132,56 @@ def page_group_room():
                     st.success(f"🎉 약속 확정! {year_s}년 {month_s}월 {day_s}일 "
                                f"{slot_to_time(rs)} - {slot_to_time(re)}")
 
-    # ── 월별 HTML 달력 + 버튼 행 렌더 ─────────────────
+    # 그룹용 달력의 날짜 칸 클릭 연동 및 투명 버튼화 스타일 
     while (render_year, render_month) <= (end_year, end_month):
         st.markdown(f"##### 📅 {render_year}년 {render_month}월")
         cal_matrix = calendar.monthcalendar(render_year, render_month)
 
-        # 요일 헤더
         hdr = "<div style='display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:3px;'>"
         for dn in ["일", "월", "화", "수", "목", "금", "토"]:
             hdr += f"<div style='font-weight:bold;font-size:12px;padding:4px 0;text-align:center;'>{dn}</div>"
         hdr += "</div>"
         st.markdown(hdr, unsafe_allow_html=True)
 
-        # 주(week) 단위로: 달력 한 행 → 버튼 행 → 상세패널
         for week in cal_matrix:
-            # 달력 한 행
-            row_html = "<div style='display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:2px;'>"
-            for col_idx, d_num in enumerate(week):
-                if d_num == 0:
-                    row_html += "<div style='min-height:46px;'></div>"
-                    continue
-                d_key  = f"{render_year}-{render_month:02d}-{d_num:02d}"
-                d_date = date_type(render_year, render_month, d_num)
-                in_range = start_d <= d_date <= end_d
-                is_sel   = (st.session_state.grp_selected_day == d_key)
-
-                if in_range:
-                    if colors.get(d_key, "red") == "green":
-                        bg = "#A5D6A7" if is_sel else "#E8F5E9"
-                        border = "2px solid #2E7D32" if is_sel else "1px solid #81C784"
-                        text_color = "#1B5E20"
-                    else:
-                        bg = "#EF9A9A" if is_sel else "#FFEBEE"
-                        border = "2px solid #B71C1C" if is_sel else "1px solid #E57373"
-                        text_color = "#C62828"
-                    check = "<div style='font-size:8px;'>✔</div>" if is_sel else ""
-                else:
-                    bg, border, text_color, check = "#FAFAFA", "1px solid #eee", "#bbb", ""
-
-                row_html += (
-                    f"<div style='background:{bg};border:{border};color:{text_color};"
-                    f"padding:6px 2px;border-radius:6px;font-weight:bold;font-size:12px;"
-                    f"text-align:center;min-height:46px;'>"
-                    f"{d_num}{check}</div>"
-                )
-            row_html += "</div>"
-            st.markdown(row_html, unsafe_allow_html=True)
-
-            # 버튼 행 (달력 행 바로 아래)
             btn_cols = st.columns(7)
             for col_idx, d_num in enumerate(week):
                 if d_num == 0:
                     continue
-                d_key  = f"{render_year}-{render_month:02d}-{d_num:02d}"
-                d_date = date_type(render_year, render_month, d_num)
-                in_range = start_d <= d_date <= end_d
-                is_sel   = (st.session_state.grp_selected_day == d_key)
-                if in_range:
-                    if btn_cols[col_idx].button(
-                        "✔" if is_sel else str(d_num),
-                        key=f"grp_day_{d_key}",
-                        use_container_width=True,
-                        type="secondary"
-                    ):
-                        st.session_state.grp_selected_day = None if is_sel else d_key
-                        st.rerun()
+                
+                with btn_cols[col_idx]:
+                    d_key  = f"{render_year}-{render_month:02d}-{d_num:02d}"
+                    d_date = date_type(render_year, render_month, d_num)
+                    in_range = start_d <= d_date <= end_d
+                    is_sel   = (st.session_state.grp_selected_day == d_key)
 
-            # 이 주에 선택된 날짜가 있으면 바로 아래에 상세 패널
+                    if in_range:
+                        if colors.get(d_key, "red") == "green":
+                            bg = "#A5D6A7" if is_sel else "#E8F5E9"
+                            border = "2px solid #2E7D32" if is_sel else "1px solid #81C784"
+                            text_color = "#1B5E20"
+                        else:
+                            bg = "#EF9A9A" if is_sel else "#FFEBEE"
+                            border = "2px solid #B71C1C" if is_sel else "1px solid #E57373"
+                            text_color = "#C62828"
+                        check = "<div style='font-size:8px;'>✔</div>" if is_sel else ""
+                    else:
+                        bg, border, text_color, check = "#FAFAFA", "1px solid #eee", "#bbb", ""
+
+                    cell_html = (
+                        f"<div style='background:{bg};border:{border};color:{text_color};"
+                        f"padding:8px 2px;border-radius:6px;font-weight:bold;font-size:12px;"
+                        f"text-align:center;min-height:50px;cursor:pointer;box-sizing:border-box;'>"
+                        f"{d_num}{check}</div>"
+                    )
+                    
+                    if in_range:
+                        if st.button(cell_html, key=f"grp_day_btn_{d_key}", use_container_width=True):
+                            st.session_state.grp_selected_day = None if is_sel else d_key
+                            st.rerun()
+                    else:
+                        st.markdown(cell_html, unsafe_allow_html=True)
+
             sel = st.session_state.grp_selected_day
             if sel:
                 sp = sel.split("-")
@@ -1215,7 +1194,6 @@ def page_group_room():
             render_month = 1
             render_year += 1
 
-    # ── 공통 시간표 뷰 (가로 스크롤 보장) ─────────────────────────
     st.markdown("---")
     st.subheader("📊 요일별 공통 가용 시간표")
     t_start = st.session_state.get("grp_time_start", 9)
