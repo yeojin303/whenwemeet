@@ -30,18 +30,15 @@ COLOR_PALETTE = [
 # ── 전역 CSS (모바일 최적화) ─────────────────────────────────────────────────
 GLOBAL_CSS = """
 <style>
-/* 앱 전체 좌우 여백 최소화 */
 .main .block-container {
     padding-left: 0.75rem !important;
     padding-right: 0.75rem !important;
     max-width: 100% !important;
 }
-/* 네비게이션 3-col 버튼 패딩 최소화 */
 [data-testid="stHorizontalBlock"] [data-testid="column"] {
     padding-left: 2px !important;
     padding-right: 2px !important;
 }
-/* CSS Grid 달력 */
 .wwm-cal {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
@@ -78,7 +75,6 @@ GLOBAL_CSS = """
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .wwm-more { font-size: 8px; color: #999; margin-top: 1px; }
-/* 그룹달력 */
 .wwm-gcell {
     text-align: center; border-radius: 6px;
     padding: 6px 2px; min-height: 52px;
@@ -133,6 +129,7 @@ def db_delete_user(user_id):
     try:
         supabase.table("events").delete().eq("user_id", user_id).execute()
         supabase.table("timetable").delete().eq("user_id", user_id).execute()
+        supabase.table("timetable_exceptions").delete().eq("user_id", user_id).execute()
         supabase.table("room_members").delete().eq("user_id", user_id).execute()
         supabase.table("users").delete().eq("id", user_id).execute()
         return True
@@ -199,6 +196,26 @@ def db_delete_timetable_entry(entry_id):
     except Exception as e:
         st.error(f"시간표 삭제 오류: {e}")
 
+# 고정시간표 예외(휴강일) 관련 DB 헬퍼 함수
+def db_get_timetable_exceptions(user_id):
+    try:
+        res = supabase.table("timetable_exceptions").select("*").eq("user_id", user_id).execute()
+        return [row["exception_date"] for row in (res.data or [])]
+    except Exception:
+        return []
+
+def db_add_timetable_exception(user_id, date_str):
+    try:
+        supabase.table("timetable_exceptions").insert({"user_id": user_id, "exception_date": date_str}).execute()
+    except Exception as e:
+        st.error(f"예외 날짜 등록 오류: {e}")
+
+def db_delete_timetable_exception(user_id, date_str):
+    try:
+        supabase.table("timetable_exceptions").delete().eq("user_id", user_id).eq("exception_date", date_str).execute()
+    except Exception as e:
+        st.error(f"예외 날짜 삭제 오류: {e}")
+
 def db_get_rooms(user_id):
     try:
         res = (
@@ -258,6 +275,7 @@ def db_get_room_members(room_code):
             uid, nick = m["user_id"], m["nickname"]
             events_raw = db_get_user_events(uid)
             timetable_raw = db_get_timetable(uid)
+            exceptions_raw = db_get_timetable_exceptions(uid) # 유저별 휴강일 로드
             members[nick] = {
                 "events": [
                     {"title": e["title"], "start": e["start_dt"], "end": e["end_dt"]}
@@ -268,6 +286,7 @@ def db_get_room_members(room_code):
                      "start": t["start_time"], "end": t["end_time"]}
                     for t in timetable_raw
                 ],
+                "exceptions": exceptions_raw
             }
         return members
     except Exception:
@@ -289,6 +308,7 @@ def init_session():
         "app_page": "LOGIN",
         "my_events": [],
         "my_timetable": [],
+        "my_exceptions": [], # 고정일정 제외 날짜 목록 리스트
         "current_group_code": None,
         "my_nickname": "",
         "fixed_expander_open": False,
@@ -302,7 +322,6 @@ def init_session():
         "cal_selected_date": None,
         "cal_selected_ev_id": None,
         "cal_selected_ev_idx": None,
-        # 고정 시간표 편집 상태 추적용 추가
         "tt_selected_id": None,
         "grp_date_colors": None,
         "grp_free_slots": None,
@@ -336,6 +355,7 @@ def load_user_data():
          "start": t["start_time"], "end": t["end_time"], "color": t.get("color", get_random_color())}
         for t in db_get_timetable(uid)
     ]
+    st.session_state.my_exceptions = db_get_timetable_exceptions(uid)
     st.session_state.my_joined_rooms = db_get_rooms(uid)
     st.session_state.data_loaded = True
 
@@ -368,7 +388,7 @@ def render_header(title, back_page=None, back_label="← 홈으로"):
 
 
 # ════════════════════════════════════════════════
-# HTML 달력 빌더 (순수 CSS Grid – 버튼 없음)
+# HTML 달력 빌더
 # ════════════════════════════════════════════════
 def build_calendar_html(year, month, events, selected_date_str=None):
     today = datetime.now()
@@ -431,7 +451,7 @@ def build_calendar_html(year, month, events, selected_date_str=None):
 
 
 # ════════════════════════════════════════════════
-# 0. 로그인 / 회원가입
+# 로그인 / 회원가입
 # ════════════════════════════════════════════════
 def page_login():
     st.title("🤝 When We Meet")
@@ -564,7 +584,7 @@ def page_home():
 
 
 # ════════════════════════════════════════════════
-# 나의 일정 – 모바일 최적화 버전
+# 나의 일정
 # ════════════════════════════════════════════════
 def page_my_calendar():
     h1, h2 = st.columns([5, 2])
@@ -574,7 +594,7 @@ def page_my_calendar():
             st.session_state.cal_selected_date = None
             st.rerun()
     with h1:
-        st.title("📆 나의 일정")
+        st.title("&nbsp;나의 일정")
 
     n1, n2, n3 = st.columns([1, 4, 1])
     with n1:
@@ -773,14 +793,14 @@ def page_my_calendar():
             st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("⚙️ 고정 시간표 관리", type="secondary", use_container_width=True):
+    if st.button("⚙️ 고정 시간표 및 휴강 관리", type="secondary", use_container_width=True):
         st.session_state.app_page = "FIXED_TIMETABLE"
         st.session_state.tt_selected_id = None
         st.rerun()
 
 
 # ════════════════════════════════════════════════
-# 고정 시간표
+# 고정 시간표 및 휴강 관리
 # ════════════════════════════════════════════════
 def page_fixed_timetable():
     h1, h2 = st.columns([5, 2])
@@ -790,91 +810,121 @@ def page_fixed_timetable():
             st.session_state.tt_selected_id = None
             st.rerun()
     with h1:
-        st.title("🕞 고정 시간표 목록")
+        st.title("🕞 고정 시간표 및 휴강 관리")
 
-    with st.expander("➕ 고정 일정 추가", expanded=st.session_state.fixed_expander_open):
-        f_title = st.text_input("일정 제목", key="ft_title")
-        f_day   = st.selectbox("요일", ["월","화","수","목","금","토","일"], key="ft_day")
-        f_start = st.text_input("시작 시각 (예: 09:00)", value="09:00", key="ft_start")
-        f_end   = st.text_input("종료 시각 (예: 12:00)", value="12:00", key="ft_end")
-        if st.button("저장", key="ft_save", type="primary", use_container_width=True):
-            if f_title:
-                db_save_timetable_entry(st.session_state.user_id, {
-                    "title": f_title, "day": f_day,
-                    "start": f_start, "end": f_end, "color": get_random_color(),
-                })
-                st.session_state.fixed_expander_open = False
-                st.session_state.data_loaded = False
-                load_user_data()
-                st.rerun()
-            else:
-                st.warning("일정 제목을 입력해주세요.")
+    # 레이아웃을 좌우 분할하여 왼쪽은 고정시간표 등록, 오른쪽은 예외(휴강일) 등록으로 배치
+    tab_tt, tab_except = st.tabs(["📋 고정 시간표 관리", "🌴 고정 일정 예외(휴강) 설정"])
 
-    if st.session_state.my_timetable:
-        st.markdown("### 📋 등록된 고정 일정")
-        
-        day_order = {"월": 0, "화": 1, "수": 2, "목": 3, "금": 4, "토": 5, "일": 6}
-        sorted_timetable = sorted(
-            st.session_state.my_timetable,
-            key=lambda x: (day_order.get(x["day"], 7), x["start"])
-        )
-
-        for ti, t in enumerate(sorted_timetable):
-            t_id = t.get("id") or f"tt_idx_{ti}"
-            is_editing = (st.session_state.tt_selected_id == t_id)
-            
-            col_a, col_edit, col_del = st.columns([5, 1, 1])
-            with col_a:
-                st.markdown(
-                    f"<div style='background-color:{t.get('color','#BBDEFB')};padding:8px;"
-                    f"border-radius:5px;margin-bottom:4px;color:#333;font-size:12px;'>"
-                    f"<b>{t['title']}</b> | {t['day']}요일 {t['start']} ~ {t['end']}</div>",
-                    unsafe_allow_html=True
-                )
-            with col_edit:
-                edit_lbl = "✖" if is_editing else "✏️"
-                if st.button(edit_lbl, key=f"edit_btn_{t_id}", use_container_width=True):
-                    st.session_state.tt_selected_id = None if is_editing else t_id
+    with tab_tt:
+        with st.expander("➕ 고정 일정 추가", expanded=st.session_state.fixed_expander_open):
+            f_title = st.text_input("일정 제목", key="ft_title")
+            f_day   = st.selectbox("요일", ["월","화","수","목","금","토","일"], key="ft_day")
+            f_start = st.text_input("시작 시각 (예: 09:00)", value="09:00", key="ft_start")
+            f_end   = st.text_input("종료 시각 (예: 12:00)", value="12:00", key="ft_end")
+            if st.button("저장", key="ft_save", type="primary", use_container_width=True):
+                if f_title:
+                    db_save_timetable_entry(st.session_state.user_id, {
+                        "title": f_title, "day": f_day,
+                        "start": f_start, "end": f_end, "color": get_random_color(),
+                    })
+                    st.session_state.fixed_expander_open = False
+                    st.session_state.data_loaded = False
+                    load_user_data()
                     st.rerun()
-            with col_del:
-                if st.button("🗑️", key=f"del_tt_{t_id}", use_container_width=True):
-                    if t.get("id"):
-                        db_delete_timetable_entry(t["id"])
-                    st.session_state.my_timetable = [item for item in st.session_state.my_timetable if item.get("id") != t.get("id")]
-                    if st.session_state.tt_selected_id == t_id:
-                        st.session_state.tt_selected_id = None
-                    st.rerun()
+                else:
+                    st.warning("일정 제목을 입력해주세요.")
 
-            # 고정 일정 수정 폼 오픈
-            if is_editing:
-                with st.form(f"edit_tt_form_{t_id}"):
-                    edit_title = st.text_input("일정 제목", value=t["title"])
-                    edit_day   = st.selectbox("요일", ["월","화","수","목","금","토","일"], index=["월","화","수","목","금","토","일"].index(t["day"]))
-                    c1, c2     = st.columns(2)
-                    edit_start = c1.text_input("시작 시각", value=t["start"])
-                    edit_end   = c2.text_input("종료 시각", value=t["end"])
-                    
-                    sub_c1, sub_c2 = st.columns(2)
-                    if sub_c1.form_submit_button("💾 수정 완료", use_container_width=True):
-                        if edit_title:
-                            updated_tt = {
-                                "id": t.get("id"),
-                                "title": edit_title,
-                                "day": edit_day,
-                                "start": edit_start,
-                                "end": edit_end,
-                                "color": t.get("color", get_random_color())
-                            }
-                            db_save_timetable_entry(st.session_state.user_id, updated_tt)
-                            st.session_state.data_loaded = False
-                            load_user_data()
+        if st.session_state.my_timetable:
+            st.markdown("### 📋 등록된 고정 일정")
+            day_order = {"월": 0, "화": 1, "수": 2, "목": 3, "금": 4, "토": 5, "일": 6}
+            sorted_timetable = sorted(
+                st.session_state.my_timetable,
+                key=lambda x: (day_order.get(x["day"], 7), x["start"])
+            )
+
+            for ti, t in enumerate(sorted_timetable):
+                t_id = t.get("id") or f"tt_idx_{ti}"
+                is_editing = (st.session_state.tt_selected_id == t_id)
+                
+                col_a, col_edit, col_del = st.columns([5, 1, 1])
+                with col_a:
+                    st.markdown(
+                        f"<div style='background-color:{t.get('color','#BBDEFB')};padding:8px;"
+                        f"border-radius:5px;margin-bottom:4px;color:#333;font-size:12px;'>"
+                        f"<b>{t['title']}</b> | {t['day']}요일 {t['start']} ~ {t['end']}</div>",
+                        unsafe_allow_html=True
+                    )
+                with col_edit:
+                    edit_lbl = "✖" if is_editing else "✏️"
+                    if st.button(edit_lbl, key=f"edit_btn_{t_id}", use_container_width=True):
+                        st.session_state.tt_selected_id = None if is_editing else t_id
+                        st.rerun()
+                with col_del:
+                    if st.button("🗑️", key=f"del_tt_{t_id}", use_container_width=True):
+                        if t.get("id"):
+                            db_delete_timetable_entry(t["id"])
+                        st.session_state.my_timetable = [item for item in st.session_state.my_timetable if item.get("id") != t.get("id")]
+                        if st.session_state.tt_selected_id == t_id:
+                            st.session_state.tt_selected_id = None
+                        st.rerun()
+
+                if is_editing:
+                    with st.form(f"edit_tt_form_{t_id}"):
+                        edit_title = st.text_input("일정 제목", value=t["title"])
+                        edit_day   = st.selectbox("요일", ["월","화","수","목","금","토","일"], index=["월","화","수","목","금","토","일"].index(t["day"]))
+                        c1, c2     = st.columns(2)
+                        edit_start = c1.text_input("시작 시각", value=t["start"])
+                        edit_end   = c2.text_input("종료 시각", value=t["end"])
+                        
+                        sub_c1, sub_c2 = st.columns(2)
+                        if sub_c1.form_submit_button("💾 수정 완료", use_container_width=True):
+                            if edit_title:
+                                updated_tt = {
+                                    "id": t.get("id"),
+                                    "title": edit_title,
+                                    "day": edit_day,
+                                    "start": edit_start,
+                                    "end": edit_end,
+                                    "color": t.get("color", get_random_color())
+                                }
+                                db_save_timetable_entry(st.session_state.user_id, updated_tt)
+                                st.session_state.data_loaded = False
+                                load_user_data()
+                                st.session_state.tt_selected_id = None
+                                st.rerun()
+                            else:
+                                st.warning("일정 제목을 입력해주세요.")
+                        if sub_c2.form_submit_button("취소", use_container_width=True):
                             st.session_state.tt_selected_id = None
                             st.rerun()
-                        else:
-                            st.warning("일정 제목을 입력해주세요.")
-                    if sub_c2.form_submit_button("취소", use_container_width=True):
-                        st.session_state.tt_selected_id = None
-                        st.rerun()
+
+    with tab_except:
+        st.markdown("**💡 특정 날짜에 휴강이나 개인 사정이 생겼나요?**")
+        st.write("아래에 날짜를 지정해 두면, 그룹 방에서 시간을 대조할 때 해당 날짜는 고정 시간표를 제외하고 계산해 줍니다.")
+        
+        exc_date = st.date_input("📆 고정 일정 제외할 날짜 선택", value=datetime.now().date())
+        if st.button("🌴 해당 날짜를 고정 일정에서 제외하기", type="secondary", use_container_width=True):
+            exc_str = exc_date.strftime("%Y-%m-%d")
+            if exc_str not in st.session_state.my_exceptions:
+                db_add_timetable_exception(st.session_state.user_id, exc_str)
+                st.session_state.data_loaded = False
+                load_user_data()
+                st.success(f"✅ {exc_str}이 고정 일정 예외일(휴강)로 등록되었습니다.")
+                st.rerun()
+            else:
+                st.warning("이미 예외 날짜로 등록되어 있습니다.")
+
+        if st.session_state.my_exceptions:
+            st.markdown("---")
+            st.markdown("##### 📌 등록된 고정 일정 제외 날짜(휴강일)")
+            for ex_date in sorted(st.session_state.my_exceptions):
+                ec1, ec2 = st.columns([5, 1])
+                ec1.markdown(f"<div style='padding:6px; background:#ECEFF1; border-radius:4px; font-size:13px;'>🌴 <b>{ex_date}</b> (이 날은 고정 시간표 차감 안 함)</div>", unsafe_allow_html=True)
+                if ec2.button("삭제", key=f"del_ex_{ex_date}", use_container_width=True):
+                    db_delete_timetable_exception(st.session_state.user_id, ex_date)
+                    st.session_state.data_loaded = False
+                    load_user_data()
+                    st.rerun()
 
     st.write("### 📊 일주일 타임라인 (15분 단위)")
     table_html = (
@@ -977,7 +1027,7 @@ def page_group_list():
 
 
 # ════════════════════════════════════════════════
-# 그룹 방 – 모바일 최적화 버전
+# 그룹 방 (가용 시간 계산 로직 변경 포함)
 # ════════════════════════════════════════════════
 def slot_to_time(i):
     return f"{i // 4:02d}:{(i % 4) * 15:02d}"
@@ -993,15 +1043,20 @@ def compute_free_slots(g_members, year, month, day, time_start_h, time_end_h):
         slots[i] = True
 
     for name, m_data in g_members.items():
-        for t in m_data.get("timetable", []):
-            if t["day"] == w_str:
-                try:
-                    sh, sm = map(int, t["start"].split(":"))
-                    eh, em = map(int, t["end"].split(":"))
-                    for i in range(sh * 4 + sm // 15, eh * 4 + em // 15):
-                        slots[i] = False
-                except Exception:
-                    pass
+        # ★★★ 핵심 피처: 대조하려는 날짜(d_str)가 유저의 휴강일(exceptions)에 포함되지 않은 경우에만 고정시간표를 반영!
+        user_exceptions = m_data.get("exceptions", [])
+        if d_str not in user_exceptions:
+            for t in m_data.get("timetable", []):
+                if t["day"] == w_str:
+                    try:
+                        sh, sm = map(int, t["start"].split(":"))
+                        eh, em = map(int, t["end"].split(":"))
+                        for i in range(sh * 4 + sm // 15, eh * 4 + em // 15):
+                            slots[i] = False
+                    except Exception:
+                        pass
+        
+        # 개인 일주는 휴강 여부와 관계없이 무조건 불가 시간으로 채움
         for ev in m_data.get("events", []):
             if ev["start"].split()[0] <= d_str <= ev["end"].split()[0]:
                 try:
