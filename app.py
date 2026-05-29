@@ -21,55 +21,74 @@ st.set_page_config(page_title="When We Meet", page_icon="📅", layout="wide")
 st.markdown("""
 <style>
 
-/* 모바일에서도 캘린더 7칸 유지 */
+/* ===== 모바일 캘린더 완벽 맞춤 ===== */
 @media (max-width: 768px) {
 
-    /* columns 가 세로로 쌓이는 것 방지 */
+    /* 전체 여백 축소 */
+    .block-container {
+        padding-left: 0.4rem !important;
+        padding-right: 0.4rem !important;
+    }
+
+    /* 가로 스크롤 제거 */
+    html, body, [data-testid="stAppViewContainer"] {
+        overflow-x: hidden !important;
+        width: 100% !important;
+    }
+
+    /* 달력 row */
     div[data-testid="stHorizontalBlock"] {
         display: flex !important;
         flex-wrap: nowrap !important;
-        gap: 2px !important;
+        gap: 1px !important;
+        width: 100% !important;
     }
 
+    /* 달력 column */
     div[data-testid="column"] {
-        min-width: 0 !important;
         flex: 1 1 0 !important;
+        min-width: 0 !important;
+        padding: 0 !important;
     }
 
-    /* 캘린더 날짜칸 */
+    /* 캘린더 칸 */
     .calendar-cell {
-        min-height: 58px !important;
-        padding: 2px !important;
-        border-radius: 6px !important;
-        font-size: 10px !important;
+        min-height: 42px !important;
+        padding: 1px !important;
+        border-radius: 5px !important;
+        font-size: 8px !important;
+        overflow: hidden !important;
+    }
+
+    /* 날짜 숫자 */
+    .calendar-cell span {
+        font-size: 9px !important;
+    }
+
+    /* 일정 바 */
+    .calendar-cell div {
+        font-size: 6px !important;
+        margin-top: 1px !important;
+        padding: 0 1px !important;
     }
 
     /* 버튼 */
     .stButton > button {
         width: 100% !important;
-        min-height: 24px !important;
-        font-size: 9px !important;
+        min-height: 20px !important;
+        height: 20px !important;
+        font-size: 7px !important;
         padding: 0 !important;
-        border-radius: 5px !important;
+        margin-top: 1px !important;
     }
 
-    /* 헤더 텍스트 */
+    /* 헤더 */
     h1 {
-        font-size: 1.5rem !important;
+        font-size: 1.25rem !important;
     }
 
     h4 {
-        font-size: 1rem !important;
-    }
-
-    /* 상세 패널은 그대로 */
-    .stForm {
-        padding: 0.5rem !important;
-    }
-
-    /* 좌우 스크롤 방지 */
-    html, body, .main {
-        overflow-x: hidden !important;
+        font-size: 0.9rem !important;
     }
 }
 </style>
