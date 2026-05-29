@@ -20,53 +20,60 @@ st.set_page_config(page_title="When We Meet", page_icon="📅", layout="wide")
 
 st.markdown("""
 <style>
-/* 모바일 캘린더 깨짐 방지 */
+
+/* 모바일에서도 캘린더 7칸 유지 */
 @media (max-width: 768px) {
 
-    /* 달력 전체 폭 고정 */
+    /* columns 가 세로로 쌓이는 것 방지 */
+    div[data-testid="stHorizontalBlock"] {
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        gap: 2px !important;
+    }
+
     div[data-testid="column"] {
         min-width: 0 !important;
+        flex: 1 1 0 !important;
     }
 
-    /* 버튼 높이 및 폰트 */
-    .stButton > button {
-        padding: 0.2rem 0.3rem !important;
-        font-size: 11px !important;
-        min-height: 32px !important;
-        white-space: nowrap !important;
-    }
-
-    /* markdown 달력칸 내부 글자 */
-    .element-container div[style*="min-height:65px"] {
+    /* 캘린더 날짜칸 */
+    .calendar-cell {
         min-height: 58px !important;
         padding: 2px !important;
+        border-radius: 6px !important;
+        font-size: 10px !important;
     }
 
-    .element-container div[style*="min-height:55px"] {
-        min-height: 50px !important;
-        padding: 2px !important;
+    /* 버튼 */
+    .stButton > button {
+        width: 100% !important;
+        min-height: 24px !important;
+        font-size: 9px !important;
+        padding: 0 !important;
+        border-radius: 5px !important;
     }
 
-    /* 일정 상세 패널 */
+    /* 헤더 텍스트 */
+    h1 {
+        font-size: 1.5rem !important;
+    }
+
+    h4 {
+        font-size: 1rem !important;
+    }
+
+    /* 상세 패널은 그대로 */
     .stForm {
         padding: 0.5rem !important;
     }
 
-    /* 달력 주간 행 */
-    [data-testid="stHorizontalBlock"] {
-        gap: 0.2rem !important;
-    }
-
-    /* 텍스트 자동 줄바꿈 */
-    * {
-        word-break: keep-all;
+    /* 좌우 스크롤 방지 */
+    html, body, .main {
+        overflow-x: hidden !important;
     }
 }
 </style>
 """, unsafe_allow_html=True)
-
-
-
 _LOCK = threading.Lock()
 calendar.setfirstweekday(6)
 
@@ -583,7 +590,7 @@ def page_my_calendar():
 
             with cols[col_idx]:
                 container_style = f"""
-                <div style="background:{bg_color}; border:{border_w} solid {border_c}; border-radius:6px; padding:4px; text-align:center; min-height:65px;">
+                <div class="calendar-cell" style="background:{bg_color}; border:{border_w} solid {border_c}; border-radius:6px; padding:4px; text-align:center; min-height:65px;">
                     <span style="font-size:11px; font-weight:bold; color:{num_color};">{'🌞 ' if is_today else ''}{day_num}</span>
                     {bars_html}
                 </div>
@@ -1192,7 +1199,7 @@ def page_group_room():
 
                 with cols[col_idx]:
                     container_style = f"""
-                    <div style="background:{bg}; border:{border}; padding:4px; text-align:center; border-radius:6px; min-height:55px;">
+                    <div class="calendar-cell" style="background:{bg}; border:{border}; padding:4px; text-align:center; border-radius:6px; min-height:55px;">
                         <span style="font-size:11px; font-weight:bold; color:{num_color};">{d_num}</span><br>
                         {status_lbl}
                     </div>
