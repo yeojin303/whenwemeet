@@ -906,8 +906,7 @@ def page_fixed_timetable():
             f_start = st.text_input("시작 시각 (예: 09:00)", value=editing_entry["start"], key="ft_start")
             f_end   = st.text_input("종료 시각 (예: 12:00)", value=editing_entry["end"], key="ft_end")
             
-            c_btn1, c_btn2 = st.columns(2)
-            if c_btn1.button("💾 수정 완료", type="primary", use_container_width=True):
+            if st.button("💾 수정 완료", type="primary", use_container_width=True):
                 if f_title:
                     db_save_timetable_entry(st.session_state.user_id, {
                         "id": editing_entry["id"], "title": f_title, "day": f_day,
@@ -918,9 +917,6 @@ def page_fixed_timetable():
                     st.session_state.ft_success_msg = "✅ 고정 일정이 성공적으로 수정되었습니다."
                     load_user_data()
                     st.rerun()
-            if c_btn2.button("취소", use_container_width=True):
-                st.session_state.tt_selected_id = None
-                st.rerun()
         else:
             st.markdown("**➕ 새로운 고정 일정 추가**")
             f_title = st.text_input("일정 제목", key="ft_title")
@@ -987,30 +983,12 @@ def page_fixed_timetable():
     if st.session_state.my_timetable:
         st.markdown("### 📋 등록된 고정 일정")
         for ti, t in enumerate(st.session_state.my_timetable):
-            col_a, col_edit, col_del = st.columns([5, 1, 1])
-            with col_a:
-                st.markdown(
-                    f"<div style='background-color:{t.get('color','#BBDEFB')};padding:8px;"
-                    f"border-radius:5px;margin-bottom:4px;color:#333;font-size:12px;'>"
-                    f"<b>{t['title']}</b> | {t['day']}요일 {t['start']} ~ {t['end']}</div>",
-                    unsafe_allow_html=True
-                )
-            with col_edit:
-                if st.button("✏️", key=f"edit_tt_{t['id']}", use_container_width=True):
-                    st.session_state.tt_selected_id = t["id"]
-                    st.rerun()
-            with col_del:
-                if st.button("🗑️", key=f"del_tt_{ti}", use_container_width=True):
-                    if t.get("id"):
-                        db_delete_timetable_entry(t["id"])
-                    st.session_state.my_timetable.pop(ti)
-                    if st.session_state.tt_selected_id == t.get("id"):
-                        st.session_state.tt_selected_id = None
-                    st.session_state.ft_success_msg = None
-                    st.session_state.data_loaded = False
-                    st.session_state.grp_date_colors = None  # 고정 시간표 항목 삭제 시에도 캐시 초기화
-                    load_user_data()
-                    st.rerun()
+            st.markdown(
+                f"<div style='background-color:{t.get('color','#BBDEFB')};padding:8px;"
+                f"border-radius:5px;margin-bottom:4px;color:#333;font-size:12px;'>"
+                f"<b>{t['title']}</b> | {t['day']}요일 {t['start']} ~ {t['end']}</div>",
+                unsafe_allow_html=True
+            )
 
     st.write("### 🗑️ 일주일 타임라인 (15분 단위)")
     table_html = (
