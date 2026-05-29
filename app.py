@@ -289,6 +289,7 @@ def page_home():
                 if st.button("입장하기", key=f"enter_{r['id']}", use_container_width=True):
                     st.session_state.current_room_id = r['id']
                     st.session_state.grp_selected_day = None
+                    st.session_page = "GROUP_ROOM"
                     st.session_state.app_page = "GROUP_ROOM"
                     st.rerun()
     else:
