@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import calendar
 import random
 import string
@@ -492,32 +493,29 @@ def page_my_calendar():
     cal_matrix = calendar.monthcalendar(cur_year, cur_month)
     active_day = st.session_state.get("active_add_day")
 
-    # ── HTML 테이블 달력 (모바일 안전) ─────────────────
+    # ── 클릭 가능한 통합 HTML 달력 (버튼 행 없이 셀 자체가 클릭 대상) ──
     day_names = ["일", "월", "화", "수", "목", "금", "토"]
-    cal_html = (
-        "<table style='width:100%; border-collapse:separate; border-spacing:3px; table-layout:fixed;'>"
-        "<tr>"
-    )
+
+    # 달력 HTML 생성
+    cells_html = ""
     for i, dn in enumerate(day_names):
-        color = "#E53935" if i == 0 else ("#1565C0" if i == 6 else "#555")
-        cal_html += (
-            f"<th style='text-align:center; padding:6px 2px; font-size:12px; "
-            f"color:{color}; font-weight:bold;'>{dn}</th>"
+        h_color = "#E53935" if i == 0 else ("#1565C0" if i == 6 else "#555")
+        cells_html += (
+            f"<div style='font-weight:bold; padding:6px 2px; font-size:12px; "
+            f"color:{h_color}; text-align:center;'>{dn}</div>"
         )
-    cal_html += "</tr>"
 
     for week in cal_matrix:
-        cal_html += "<tr>"
         for col_idx, day_num in enumerate(week):
             if day_num == 0:
-                cal_html += "<td style='min-height:72px;'></td>"
+                cells_html += "<div></div>"
                 continue
 
-            date_str   = f"{cur_year}-{cur_month:02d}-{day_num:02d}"
-            is_today   = (day_num == today.day and cur_month == today.month and cur_year == today.year)
-            is_active  = (active_day == day_num)
-            is_sun     = (col_idx == 0)
-            is_sat     = (col_idx == 6)
+            date_str  = f"{cur_year}-{cur_month:02d}-{day_num:02d}"
+            is_today  = (day_num == today.day and cur_month == today.month and cur_year == today.year)
+            is_active = (active_day == day_num)
+            is_sun    = (col_idx == 0)
+            is_sat    = (col_idx == 6)
 
             num_color    = "#E53935" if is_sun else ("#1565C0" if is_sat else "#212121")
             border_color = "#1976D2" if is_active else "#e0e0e0"
@@ -526,12 +524,14 @@ def page_my_calendar():
 
             if is_today:
                 num_html = (
-                    f"<span style='display:inline-block; background:#1976D2; color:white; "
-                    f"border-radius:50%; width:18px; height:18px; line-height:18px; "
-                    f"text-align:center; font-size:10px; font-weight:700;'>{day_num}</span>"
+                    f"<span style='display:inline-block;background:#1976D2;color:white;"
+                    f"border-radius:50%;width:20px;height:20px;line-height:20px;"
+                    f"text-align:center;font-size:11px;font-weight:700;'>{day_num}</span>"
                 )
             else:
-                num_html = f"<span style='font-size:11px; font-weight:600; color:{num_color};'>{day_num}</span>"
+                num_html = (
+                    f"<span style='font-size:12px;font-weight:600;color:{num_color};'>{day_num}</span>"
+                )
 
             day_events = [
                 ev for ev in st.session_state.my_events
@@ -543,41 +543,67 @@ def page_my_calendar():
                 c       = ev.get("color", "#4D96FF")
                 t_short = ev["title"][:4] + ("…" if len(ev["title"]) > 4 else "")
                 bars_html += (
-                    f"<div style='background:{c}; color:white; font-size:7px; font-weight:600; "
-                    f"border-radius:2px; padding:1px 2px; margin-top:1px; "
-                    f"white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:12px;'>"
-                    f"{t_short}</div>"
+                    f"<div style='background:{c};color:white;font-size:7px;font-weight:600;"
+                    f"border-radius:2px;padding:1px 3px;margin-top:2px;"
+                    f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{t_short}</div>"
                 )
             if len(day_events) > 2:
-                bars_html += f"<div style='font-size:7px; color:#999; margin-top:1px;'>+{len(day_events)-2}</div>"
+                bars_html += f"<div style='font-size:7px;color:#999;margin-top:1px;'>+{len(day_events)-2}</div>"
 
-            cal_html += (
-                f"<td style='background:{bg_color}; border:{border_w} solid {border_color}; "
-                f"border-radius:6px; padding:3px 2px; vertical-align:top; min-height:72px; "
-                f"height:72px;'>"
-                f"<div style='margin-bottom:1px;'>{num_html}</div>{bars_html}</td>"
+            check_mark = "<div style='position:absolute;top:2px;right:4px;color:#1976D2;font-size:10px;'>✔</div>" if is_active else ""
+
+            cells_html += (
+                f"<div onclick=\"window.parent.postMessage({{type:'streamlit:setComponentValue',value:'{day_num}'}}, '*')\""
+                f" style='position:relative;background:{bg_color};border:{border_w} solid {border_color};"
+                f"border-radius:6px;padding:4px 3px;vertical-align:top;min-height:68px;"
+                f"cursor:pointer;box-sizing:border-box;-webkit-tap-highlight-color:rgba(0,0,0,0.08);'>"
+                f"<div style='margin-bottom:2px;text-align:center;'>{num_html}</div>"
+                f"{bars_html}{check_mark}</div>"
             )
-        cal_html += "</tr>"
-    cal_html += "</table>"
-    st.markdown(cal_html, unsafe_allow_html=True)
 
-    # ── 버튼 행: 날짜마다 클릭 버튼 (7열 유지) ─────────
-    for week in cal_matrix:
-        btn_cols = st.columns(7)
-        for idx, day_num in enumerate(week):
-            if day_num == 0:
-                continue
-            date_str  = f"{cur_year}-{cur_month:02d}-{day_num:02d}"
-            is_active = (active_day == day_num)
-            lbl = "✔" if is_active else " "
-            if btn_cols[idx].button(lbl, key=f"day_{date_str}", use_container_width=True):
-                if is_active:
-                    st.session_state.active_add_day = None
-                else:
-                    st.session_state.active_add_day = day_num
-                    st.session_state.selected_event_id = None
-                    st.session_state.editing_event_idx = None
-                st.rerun()
+    cal_component_html = f"""
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:0;">
+    {cells_html}
+    </div>
+    <script>
+    window.addEventListener('message', function(e) {{
+        if (e.data && e.data.type === 'streamlit:setComponentValue') {{
+            window.parent.postMessage(e.data, '*');
+        }}
+    }});
+    </script>
+    """
+
+    # components.html로 클릭 이벤트 수신
+    clicked_day = components.html(
+        f"""
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;">
+        {cells_html}
+        </div>
+        <script>
+        const cells = document.querySelectorAll('[onclick]');
+        cells.forEach(function(cell) {{
+            cell.addEventListener('click', function() {{
+                const val = this.getAttribute('onclick').match(/'(\\d+)'/)[1];
+                window.parent.postMessage({{isStreamlitMessage: true, type: 'streamlit:setComponentValue', value: parseInt(val)}}, '*');
+            }});
+            cell.removeAttribute('onclick');
+        }});
+        </script>
+        """,
+        height=len(cal_matrix) * 76 + 40,
+        scrolling=False,
+    )
+
+    if clicked_day is not None:
+        clicked_day = int(clicked_day)
+        if active_day == clicked_day:
+            st.session_state.active_add_day = None
+        else:
+            st.session_state.active_add_day = clicked_day
+            st.session_state.selected_event_id = None
+            st.session_state.editing_event_idx = None
+        st.rerun()
 
     # ── 날짜 선택 시 하단 패널 ──────────────────────────
     add_day = st.session_state.active_add_day
@@ -1149,75 +1175,85 @@ def page_group_room():
         st.markdown(f"##### 📅 {render_year}년 {render_month}월")
         cal_matrix = calendar.monthcalendar(render_year, render_month)
 
-        # HTML 그리드 달력 (색상 표시, 모바일 고정폭 유지)
-        grid_html = (
-            "<div style='display:grid;grid-template-columns:repeat(7,1fr);"
-            "gap:4px;text-align:center;margin-bottom:2px;'>"
+        # HTML 그리드 달력 + 클릭 이벤트 통합 (버튼 행 분리 없음)
+        header_cells = "".join(
+            f"<div style='font-weight:bold;font-size:12px;padding:4px 0;text-align:center;'>{dn}</div>"
+            for dn in ["일", "월", "화", "수", "목", "금", "토"]
         )
-        for dn in ["일", "월", "화", "수", "목", "금", "토"]:
-            grid_html += f"<div style='font-weight:bold;font-size:12px;padding:4px 0;'>{dn}</div>"
-
+        day_cells = ""
         for week in cal_matrix:
             for d_num in week:
-                if d_num != 0:
-                    d_key = f"{render_year}-{render_month:02d}-{d_num:02d}"
-                    d_date = date_type(render_year, render_month, d_num)
-                    in_range = start_d <= d_date <= end_d
-                    is_sel = (st.session_state.grp_selected_day == d_key)
-
-                    if in_range:
-                        if colors.get(d_key, "red") == "green":
-                            bg = "#A5D6A7" if is_sel else "#E8F5E9"
-                            border = "2px solid #2E7D32" if is_sel else "1px solid #81C784"
-                            text_color = "#1B5E20"
-                        else:
-                            bg = "#EF9A9A" if is_sel else "#FFEBEE"
-                            border = "2px solid #B71C1C" if is_sel else "1px solid #E57373"
-                            text_color = "#C62828"
-                    else:
-                        bg, border, text_color = "#FAFAFA", "1px solid #eee", "#bbb"
-
-                    grid_html += (
-                        f"<div style='background-color:{bg};border:{border};color:{text_color};"
-                        f"padding:10px 2px;border-radius:6px;font-weight:bold;font-size:12px;'>"
-                        f"{d_num}</div>"
-                    )
-                else:
-                    grid_html += "<div></div>"
-        grid_html += "</div>"
-        st.markdown(grid_html, unsafe_allow_html=True)
-
-        # 버튼 행: HTML 달력과 1:1 대응, 범위 내 날짜만 활성화
-        # margin-top:-4px 으로 달력과 딱 붙게
-        st.markdown("<div style='margin-top:-4px;'>", unsafe_allow_html=True)
-        for week in cal_matrix:
-            btn_cols = st.columns(7)
-            for col_idx, d_num in enumerate(week):
                 if d_num == 0:
-                    btn_cols[col_idx].markdown(" ")
+                    day_cells += "<div></div>"
                     continue
-                d_key = f"{render_year}-{render_month:02d}-{d_num:02d}"
+                d_key  = f"{render_year}-{render_month:02d}-{d_num:02d}"
                 d_date = date_type(render_year, render_month, d_num)
                 in_range = start_d <= d_date <= end_d
-                is_sel = (st.session_state.grp_selected_day == d_key)
+                is_sel   = (st.session_state.grp_selected_day == d_key)
 
                 if in_range:
-                    lbl = "✔" if is_sel else "　"
-                    if btn_cols[col_idx].button(lbl, key=f"grp_day_{d_key}",
-                                                use_container_width=True):
-                        st.session_state.grp_selected_day = None if is_sel else d_key
-                        st.rerun()
+                    if colors.get(d_key, "red") == "green":
+                        bg = "#A5D6A7" if is_sel else "#E8F5E9"
+                        border = "2px solid #2E7D32" if is_sel else "1px solid #81C784"
+                        text_color = "#1B5E20"
+                    else:
+                        bg = "#EF9A9A" if is_sel else "#FFEBEE"
+                        border = "2px solid #B71C1C" if is_sel else "1px solid #E57373"
+                        text_color = "#C62828"
+                    check = "<div style='font-size:9px;text-align:center;'>✔</div>" if is_sel else ""
+                    day_cells += (
+                        f"<div data-key='{d_key}' style='background:{bg};border:{border};color:{text_color};"
+                        f"padding:8px 2px;border-radius:6px;font-weight:bold;font-size:12px;"
+                        f"text-align:center;cursor:pointer;box-sizing:border-box;"
+                        f"-webkit-tap-highlight-color:rgba(0,0,0,0.12);'>"
+                        f"{d_num}{check}</div>"
+                    )
                 else:
-                    btn_cols[col_idx].markdown(" ")
+                    day_cells += (
+                        f"<div style='background:#FAFAFA;border:1px solid #eee;color:#bbb;"
+                        f"padding:8px 2px;border-radius:6px;font-weight:bold;font-size:12px;"
+                        f"text-align:center;box-sizing:border-box;'>{d_num}</div>"
+                    )
 
-            # 이 주에 선택된 날짜가 있으면 바로 아래에 상세 패널
-            sel = st.session_state.grp_selected_day
-            if sel:
-                sp = sel.split("-")
-                sy, sm, sd = int(sp[0]), int(sp[1]), int(sp[2])
-                if sy == render_year and sm == render_month and sd in week:
-                    render_day_detail(sel)
-        st.markdown("</div>", unsafe_allow_html=True)
+        n_rows = len(cal_matrix)
+        grid_component = components.html(
+            f"""
+            <div id="cal" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">
+            {header_cells}
+            {day_cells}
+            </div>
+            <script>
+            document.querySelectorAll('[data-key]').forEach(function(el) {{
+                el.addEventListener('click', function() {{
+                    var key = this.getAttribute('data-key');
+                    window.parent.postMessage({{isStreamlitMessage:true, type:'streamlit:setComponentValue', value: key}}, '*');
+                }});
+            }});
+            </script>
+            """,
+            height=n_rows * 46 + 40,
+            scrolling=False,
+        )
+
+        if grid_component is not None:
+            clicked_key = str(grid_component)
+            if st.session_state.grp_selected_day == clicked_key:
+                st.session_state.grp_selected_day = None
+            else:
+                st.session_state.grp_selected_day = clicked_key
+            st.rerun()
+
+        # 선택된 날짜 상세 패널 (달력 바로 아래에 주별로)
+        sel = st.session_state.grp_selected_day
+        if sel:
+            sp = sel.split("-")
+            sy, sm, sd = int(sp[0]), int(sp[1]), int(sp[2])
+            if sy == render_year and sm == render_month:
+                # 해당 날짜가 이 월에 속하면 달력 바로 아래 표시
+                for week in cal_matrix:
+                    if sd in week:
+                        render_day_detail(sel)
+                        break
 
         render_month += 1
         if render_month > 12:
