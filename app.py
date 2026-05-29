@@ -19,30 +19,31 @@ supabase = get_supabase()
 st.set_page_config(page_title="When We Meet", page_icon="📅", layout="wide")
 
 # ════════════════════════════════════════════════
-# 모바일 달력 세로 깨짐 방지 CSS (여기만 추가됨)
+# 모바일 달력 가로 스크롤 및 잘림 방지 CSS (이 부분만 확실하게 고쳤습니다!)
 # ════════════════════════════════════════════════
 st.markdown("""
 <style>
-/* 모바일 화면에서 7열(달력) 컬럼이 세로로 길게 쌓이지 않고 가로로 유지되도록 강제 설정 */
+/* 모바일 화면에서 7열(달력) 컬럼이 세로로 쌓이지 않고 가로로 유지되도록 설정 */
 @media (max-width: 768px) {
     div[data-testid="stHorizontalBlock"]:has(> div:nth-child(7)) {
         flex-direction: row !important;
         flex-wrap: nowrap !important;
+        overflow-x: auto !important; /* 핵심: 화면이 좁으면 가로 스크롤(스와이프) 가능하게 허용 */
+        -webkit-overflow-scrolling: touch !important; /* 모바일 부드러운 터치 스크롤 */
         gap: 2px !important;
-        overflow: hidden !important; /* 가로 스크롤 방지, 폰 화면에 딱 맞춤 */
         width: 100% !important;
+        padding-bottom: 8px !important; /* 하단 스크롤바 공간 여유 확보 */
     }
     div[data-testid="stHorizontalBlock"]:has(> div:nth-child(7)) > div[data-testid="column"] {
-        width: calc(100% / 7) !important;
-        flex: 1 1 calc(100% / 7) !important;
-        min-width: 0 !important; /* 넓이 강제 축소 허용 */
+        min-width: 55px !important; /* 날짜 글씨나 버튼이 잘리지 않을 최소 너비 */
+        flex: 0 0 auto !important;
         padding: 0 1px !important;
     }
     /* 달력 안쪽 버튼 사이즈 최적화 */
     div[data-testid="stHorizontalBlock"]:has(> div:nth-child(7)) button {
         padding: 0 !important;
-        font-size: 10px !important;
-        min-height: 24px !important;
+        font-size: 11px !important;
+        min-height: 28px !important;
     }
 }
 </style>
