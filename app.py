@@ -1223,36 +1223,52 @@ def page_group_room():
             st.success(st.session_state.grp_confirmed_msg)
             st.balloons()
 
-    st.markdown("---")
-    st.subheader("📊 요일별 공통 가능 시간표")
-    w_days      = ["월","화","수","목","금","토","일"]
-    hours_range = list(range(t_start, t_end))
+st.markdown("---")
+    st.subheader("📊 요일별 공통 가능 시간표 (15분 단위)")
+    
+    w_days = ["월", "화", "수", "목", "금", "토", "일"]
+    
+    # 변경: 대조할 시간 범위를 정밀 연산을 위해 15분 단위 리스트로 생성
     w_table = (
         "<div style='overflow-x:auto;-webkit-overflow-scrolling:touch;'>"
-        "<table style='width:100%;min-width:500px;table-layout:fixed;text-align:center;"
-        "font-size:10px;border-collapse:collapse;border:1px solid #ddd;word-break:break-all;'>"
-        "<tr style='background-color:#F5F5F5;'><th style='padding:6px;border:1px solid #ddd;'>요일/시간</th>"
+        "<table style='width:100%;min-width:600px;table-layout:fixed;border-collapse:collapse;"
+        "text-align:center;font-size:11px;border:1px solid #ddd;word-break:break-all;'>"
+        "<tr style='background-color:#F5F5F5;font-weight:bold;'>"
+        "<th style='border:1px solid #ddd;padding:6px;'>시간</th>"
     )
-    for h in hours_range:
-        w_table += f"<th style='border:1px solid #ddd;padding:2px;'>{h:02d}</th>"
+    for d in w_days:
+        w_table += f"<th style='border:1px solid #ddd;padding:6px;'>{d}</th>"
     w_table += "</tr>"
-    for w_day in w_days:
-        w_table += f"<tr><td style='font-weight:bold;border:1px solid #ddd;padding:6px;'>{w_day}</td>"
-        for h in hours_range:
-            is_free = True
-            for name, m_data in g_members.items():
-                for t in m_data.get("timetable", []):
-                    if t["day"] == w_day:
-                        try:
-                            sh = int(t["start"].split(":")[0])
-                            eh = int(t["end"].split(":")[0])
-                            if sh <= h < eh:
-                                is_free = False
-                        except Exception:
-                            pass
-            bg = "#4CAF50" if is_free else "#F44336"
-            w_table += f"<td style='background-color:{bg};border:1px solid #ddd;height:22px;'></td>"
-        w_table += "</tr>"
+    
+    # 24시간을 15분 단위 순회하며 세로형 테이블 작성
+    for hour in range(24):
+        for minute in [0, 15, 30, 45]:
+            time_str = f"{hour:02d}:{minute:02d}"
+            w_table += (
+                f"<tr><td style='border:1px solid #ddd;background-color:#FAFAFA;"
+                f"font-weight:bold;padding:4px;'>{time_str}</td>"
+            )
+            
+            for w_day in w_days:
+                is_free = True
+                # 모든 그룹 멤버의 시간표를 15분 단위로 빈틈없이 대조
+                for name, m_data in g_members.items():
+                    for t in m_data.get("timetable", []):
+                        if t["day"] == w_day:
+                            try:
+                                # 문자열 비교(예: "09:00" <= "09:15" < "12:00")를 통한 정확한 15분 단위 필터링
+                                if t["start"] <= time_str < t["end"]:
+                                    is_free = False
+                                    break
+                            except Exception:
+                                pass
+                    if not is_free:
+                        break
+                        
+                bg = "#4CAF50" if is_free else "#F44336"
+                w_table += f"<td style='background-color:{bg};border:1px solid #ddd;height:18px;'></td>"
+            w_table += "</tr>"
+            
     w_table += "</table></div>"
     st.markdown(w_table, unsafe_allow_html=True)
 
