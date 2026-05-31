@@ -1066,7 +1066,7 @@ def page_group_room():
     with h1:
         st.title(f"🏢 {room_info['name']}")
 
-    st.markdown("---")
+st.markdown("---")
     st.subheader("🔍 약속 가능 날짜 찾기")
     now      = datetime.now(KST)
     last_day = calendar.monthrange(now.year, now.month)[1]
@@ -1078,16 +1078,59 @@ def page_group_room():
             key="grp_date_range"
         )
     with col_m:
-        min_h = st.number_input("⏱️ 최소 연속 가능 시간(시간)", min_value=1, max_value=12, value=2, key="grp_min_h")
+        # 변경 1: 최소 연속 가능 시간을 15분 단위(0.25) 단계로 조절 가능하게 변경 (st.number_input -> st.selectbox 또는 step 설정)
+        # 여기서는 직관적으로 '시간' 단위 소수점(예: 1.25시간 = 1시간 15분)으로 조절할 수 있도록 step을 0.25로 설정했습니다.
+        # 화면에 보일 때 "1시간 15분" 형태로 이쁘게 나오도록 format_func를 사용하는 selectbox로 대체합니다.
+        min_h_options = [i * 0.25 for i in range(4, 49)] # 1시간(4*0.25)부터 12시간(48*0.25)까지 15분 단위
+        def format_min_h(x):
+            h = int(x)
+            m = int((x - h) * 60)
+            if m == 0: return f"{h}시간"
+            return f"{h}시간 {m}분"
+        
+        min_h = st.selectbox("⏱️ 최소 연속 가능 시간", options=min_h_options, index=4, format_func=format_min_h, key="grp_min_h")
+
     st.markdown("🕐 **희망 시간대**")
     col_t1, col_t2 = st.columns(2)
+    
+    # 15분 단위의 시간 목록 생성 (00:00 ~ 24:00)
+    time_options = []
+    for h in range(24):
+        for m in [0, 15, 30, 45]:
+            time_options.append((h, m))
+    time_options.append((24, 0)) # 종료 시각용 24:00 추가
+
     with col_t1:
-        time_start_h = st.selectbox("시작 시각", options=list(range(0, 24)), index=9, format_func=lambda x: f"{x:02d}:00", key="grp_time_start_sel")
+        # 변경 2: 희망 시작 시각을 15분 단위로 변경
+        # 기존 index=9(09:00)에 대응하는 위치는 9 * 4 = 36 입니다.
+        start_options = time_options[:-1] # 24:00은 시작 시각에서 제외
+        time_start_idx = st.selectbox(
+            "시작 시각", 
+            options=range(len(start_options)), 
+            index=36, 
+            format_func=lambda x: f"{start_options[x][0]:02d}:{start_options[x][1]:02d}", 
+            key="grp_time_start_sel"
+        )
+        start_h, start_m = start_options[time_start_idx]
+        # slots 인덱스 계산을 위해 쿼터(15분) 단위의 값으로 변환
+        time_start_q = start_h * 4 + (start_m // 15)
+
     with col_t2:
-        time_end_h = st.selectbox("종료 시각", options=list(range(1, 25)), index=20, format_func=lambda x: f"{x:02d}:00", key="grp_time_end_sel")
+        # 변경 3: 희망 종료 시각을 15분 단위로 변경
+        # 기존 index=20(20:00)에 대응하는 위치는 20 * 4 = 80 입니다. (시작 시각 제외 없는 전체 목록 기준)
+        end_options = time_options[1:] # 00:00은 종료 시각에서 제외
+        time_end_idx = st.selectbox(
+            "종료 시각", 
+            options=range(len(end_options)), 
+            index=79, # 전체 80번째 인덱스 (00:00이 빠졌으므로 80 - 1 = 79)
+            format_func=lambda x: f"{end_options[x][0]:02d}:{end_options[x][1]:02d}", 
+            key="grp_time_end_sel"
+        )
+        end_h, end_m = end_options[time_end_idx]
+        time_end_q = end_h * 4 + (end_m // 15)
 
     if st.button("📊 일정 대조하기", type="primary", use_container_width=True):
-        if time_start_h >= time_end_h:
+        if time_start_q >= time_end_q:
             st.error("종료 시각은 시작 시각보다 늦어야 합니다.")
         else:
             if isinstance(date_range, tuple) and len(date_range) == 2:
@@ -1099,15 +1142,21 @@ def page_group_room():
             free_slots_cache = {}
             cur = start_d
             while cur <= end_d:
-                slots = compute_free_slots(g_members, cur.year, cur.month, cur.day, time_start_h, time_end_h)
+                # compute_free_slots 함수가 정수 시간만 받는지, 시간 범위를 다 받는지 모르겠으나
+                # 내부 연산이 hour 단위 기준이면 start_h, end_h를 넘겨주되, 슬롯 대조는 15분 단위(time_start_q, time_end_q)로 정확히 수행합니다.
+                slots = compute_free_slots(g_members, cur.year, cur.month, cur.day, start_h, end_h)
                 max_c = curr_c = 0
-                for i in range(time_start_h * 4, time_end_h * 4):
-                    if slots[i]:
+                
+                # 변경 4: 15분 단위(쿼터 크기)로 쪼개진 인덱스로 직접 루프를 돕니다.
+                for i in range(time_start_q, time_end_q):
+                    if i < len(slots) and slots[i]:
                         curr_c += 1; max_c = max(max_c, curr_c)
                     else:
                         curr_c = 0
                 key = cur.strftime("%Y-%m-%d")
-                date_colors[key]      = "green" if max_c >= min_h * 4 else "red"
+                
+                # min_h * 4 는 '최소 연속 시간'을 15분 칸 개수로 환산한 값입니다. (예: 1.25시간 * 4 = 5칸)
+                date_colors[key]      = "green" if max_c >= int(min_h * 4) else "red"
                 free_slots_cache[key] = slots
                 cur += timedelta(days=1)
             st.session_state.grp_date_colors  = date_colors
@@ -1115,8 +1164,8 @@ def page_group_room():
             st.session_state.grp_selected_day = None
             st.session_state.grp_start_d      = start_d
             st.session_state.grp_end_d        = end_d
-            st.session_state.grp_time_start   = time_start_h
-            st.session_state.grp_time_end     = time_end_h
+            st.session_state.grp_time_start   = time_start_q # 쿼터 인덱스로 저장합니다.
+            st.session_state.grp_time_end     = time_end_q
             st.session_state.grp_confirmed_msg = None
             st.rerun()
 
@@ -1205,15 +1254,27 @@ def page_group_room():
         )
         st.markdown(bar_html, unsafe_allow_html=True)
 
-        # CHANGE 3: 약속시간 확정 기능 (날짜 분석 그래프 ~ 요일별 가능시간표 사이)
+        # CHANGE 3: 약속시간 확정 기능 (15분 단위 선택 가능하게 변경)
         st.markdown("---")
         st.markdown("### ⏰ 시간 직접 설정하여 확정하기")
         conf_c1, conf_c2 = st.columns(2)
+        
+        # 15분 단위 텍스트 리스트 생성
+        conf_start_options = [f"{h:02d}:{m:02d}" for h in range(24) for m in [0, 15, 30, 45]]
+        conf_end_options = [f"{h:02d}:{m:02d}" for h in range(24) for m in [0, 15, 30, 45]][1:] + ["24:00"]
+        
+        # 기본 선택 index 계산 (t_start, t_end는 쿼터 인덱스이므로 그대로 사용하거나 범위를 제한)
+        default_start_idx = min(t_start, len(conf_start_options) - 1)
+        # t_end는 종료 지점이므로 conf_end_options 목록에서는 index 상 t_end - 1이 매칭됩니다.
+        default_end_idx = min(max(0, t_end - 1), len(conf_end_options) - 1)
+
         with conf_c1:
-            conf_start = st.selectbox("시작", options=[f"{h:02d}:00" for h in range(24)], index=min(t_start, 23), key="grp_conf_start")
+            conf_start = st.selectbox("시작", options=conf_start_options, index=default_start_idx, key="grp_conf_start")
         with conf_c2:
-            conf_end = st.selectbox("종료", options=[f"{h:02d}:00" for h in range(1, 25)], index=min(t_end - 1, 23), key="grp_conf_end")
+            conf_end = st.selectbox("종료", options=conf_end_options, index=default_end_idx, key="grp_conf_end")
+            
         if st.button("🔗 커스텀 시간으로 약속 확정", type="primary", use_container_width=True):
+            # 문자열 비교를 통해 시작이 종료보다 늦거나 같지 않은지 체크 ("09:15" >= "10:00" 같은 식의 비교가 가능합니다)
             if conf_start >= conf_end:
                 st.error("종료 시각은 시작 시각보다 늦어야 합니다.")
             else:
