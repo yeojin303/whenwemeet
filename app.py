@@ -1133,6 +1133,7 @@ if st.button("📊 일정 대조하기", type="primary", use_container_width=Tru
         free_slots_cache = {}
         cur = start_d
         while cur <= end_d:
+            # 💡 여기 변수명을 room_members로 수정했습니다!
             slots = compute_free_slots(room_members, cur.year, cur.month, cur.day, start_h, end_h)
             max_c = curr_c = 0
             for i in range(time_start_q, time_end_q):
@@ -1154,10 +1155,9 @@ if st.button("📊 일정 대조하기", type="primary", use_container_width=Tru
         st.session_state.grp_confirmed_msg = None
         st.rerun()
 
-# 💡 이 부분이 수정되었습니다! (return -> st.stop())
 if st.session_state.grp_date_colors is None:
     st.info("조건을 설정하고 '일정 대조하기' 버튼을 눌러보세요.")
-    st.stop()  # 앱 렌더링을 여기서 안전하게 멈춥니다.
+    st.stop()
 
 colors  = st.session_state.grp_date_colors
 start_d = st.session_state.grp_start_d
@@ -1171,6 +1171,7 @@ red_cnt   = sum(1 for v in colors.values() if v == "red")
 mc1, mc2, mc3 = st.columns(3)
 mc1.metric("✅ 가능한 날",   f"{green_cnt}일")
 mc2.metric("❌ 불가능한 날", f"{red_cnt}일")
+# 💡 여기 변수명도 room_members로 수정했습니다!
 mc3.metric("👥 참여 인원",  f"{len(room_members)}명")
 
 st.markdown("### 📅 일정 대조 달력")
