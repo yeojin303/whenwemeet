@@ -5,6 +5,7 @@ import string
 import hashlib
 import threading
 from datetime import datetime, date as date_type, timedelta, timezone
+from supabase import create_client, Client
 
 KST = timezone(timedelta(hours=9))
 
