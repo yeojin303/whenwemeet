@@ -944,6 +944,7 @@ def page_group_list():
                     st.session_state.current_group_code   = code
                     st.session_state.my_joined_rooms[code] = {"name": g_name, "my_nickname": nickname}
                     st.success(f"✅ 방 코드: **`{code}`** 를 친구에게 공유하세요!")
+                    st.session_state.grp_confirmed_msg = None
                     st.session_state.app_page = "GROUP_ROOM"
                     st.rerun()
             else:
@@ -961,6 +962,7 @@ def page_group_list():
                         "name": room_info["name"] if room_info else join_code,
                         "my_nickname": nickname,
                     }
+                    st.session_state.grp_confirmed_msg = None
                     st.session_state.app_page = "GROUP_ROOM"
                     st.rerun()
                 else:
@@ -980,6 +982,7 @@ def page_group_list():
                 if st.button("입장", key=f"enter_{c}", use_container_width=True):
                     st.session_state.current_group_code = c
                     st.session_state.my_nickname        = info["my_nickname"]
+                    st.session_state.grp_confirmed_msg  = None
                     st.session_state.app_page = "GROUP_ROOM"
                     st.rerun()
 
