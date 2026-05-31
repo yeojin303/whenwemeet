@@ -1066,7 +1066,7 @@ def page_group_room():
     with h1:
         st.title(f"🏢 {room_info['name']}")
 
-   st.markdown("---")
+st.markdown("---")
     st.subheader("🔍 약속 가능 날짜 찾기")
     now      = datetime.now(KST)
     last_day = calendar.monthrange(now.year, now.month)[1]
@@ -1112,7 +1112,6 @@ def page_group_room():
             free_slots_cache = {}
             cur = start_d
             while cur <= end_d:
-                # 내부 비교를 위해 기존 함수 구조(시간단위)를 맞추되 슬롯 계산 범위 정밀화
                 slots = compute_free_slots(g_members, cur.year, cur.month, cur.day, 0, 24)
                 
                 # 설정한 희망 시간대 바깥의 슬롯은 전부 False 처리
@@ -1130,7 +1129,6 @@ def page_group_room():
                         curr_c = 0
                 key = cur.strftime("%Y-%m-%d")
                 
-                # min_h * 4 가 요구하는 최소 연속 슬롯 수입니다.
                 date_colors[key]      = "green" if max_c >= int(min_h * 4) else "red"
                 free_slots_cache[key] = slots
                 cur += timedelta(days=1)
@@ -1140,7 +1138,7 @@ def page_group_room():
             st.session_state.grp_selected_day = None
             st.session_state.grp_start_d      = start_d
             st.session_state.grp_end_d        = end_d
-            st.session_state.grp_time_start   = sh_h  # 메트릭 렌더링용 하위 호환 유지
+            st.session_state.grp_time_start   = sh_h
             st.session_state.grp_time_end     = eh_h
             st.session_state.grp_confirmed_msg = None
             st.rerun()
@@ -1228,7 +1226,7 @@ def page_group_room():
         )
         st.markdown(bar_html, unsafe_allow_html=True)
 
-        # 변경: 약속시간 확정 항목도 15분 단위로 완벽하게 선택 가능하도록 수정
+        # 변경: 약속시간 확정 항목도 공백 8칸 인덴트 준수하여 15분 단위로 깔끔하게 수정
         st.markdown("---")
         st.markdown("### ⏰ 시간 직접 설정하여 확정하기")
         conf_c1, conf_c2 = st.columns(2)
@@ -1258,7 +1256,6 @@ def page_group_room():
             st.balloons()
 
     st.markdown("---")
-    st.subheader("📊 요일별 공통 가능 시간표")
     w_days      = ["월","화","수","목","금","토","일"]
     hours_range = list(range(t_start, t_end))
     w_table = (
