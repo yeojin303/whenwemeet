@@ -1319,11 +1319,12 @@ def page_group_room():
             if conf_start >= conf_end:
                 st.error("종료 시각은 시작 시각보다 늦어야 합니다.")
             else:
-                # 그룹 원래 방이름으로 일정 제목 생성
-                _rinfo = db_get_room_info(code)
-                _rname = _rinfo["name"] if _rinfo else code
+                # 내가 설정한 커스텀 이름 우선, 없으면 원래 방이름
+                _my_room = st.session_state.my_joined_rooms.get(code, {})
+                _rinfo   = db_get_room_info(code)
+                _rname   = _my_room.get("name") or (_rinfo["name"] if _rinfo else code)
                 confirmed_event = {
-                    "title": f"({_rname}) 약속",
+                    "title": f"{_rname} 약속",
                     "start": f"{sel_day} {conf_start}",
                     "end":   f"{sel_day} {conf_end}",
                     "color": get_random_color(),
