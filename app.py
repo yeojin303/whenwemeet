@@ -1154,12 +1154,10 @@ if st.button("📊 일정 대조하기", type="primary", use_container_width=Tru
         st.session_state.grp_confirmed_msg = None
         st.rerun()
 
+# 💡 이 부분이 수정되었습니다! (return -> st.stop())
 if st.session_state.grp_date_colors is None:
     st.info("조건을 설정하고 '일정 대조하기' 버튼을 눌러보세요.")
-    # 만약 이 코드가 함수 내부가 아니라면 return 문에서 또 에러가 날 수 있으므로, 
-    # 상황에 따라 이 함수가 메인 스크립트라면 return 대신 st.stop()을 쓰거나 제거해야 합니다.
-    # 일단은 원본 유지합니다.
-    return
+    st.stop()  # 앱 렌더링을 여기서 안전하게 멈춥니다.
 
 colors  = st.session_state.grp_date_colors
 start_d = st.session_state.grp_start_d
