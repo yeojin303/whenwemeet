@@ -1066,7 +1066,7 @@ def page_group_room():
     with h1:
         st.title(f"🏢 {room_info['name']}")
 
-st.markdown("---")
+    st.markdown("---")
     st.subheader("🔍 약속 가능 날짜 찾기")
     now      = datetime.now(KST)
     last_day = calendar.monthrange(now.year, now.month)[1]
@@ -1078,29 +1078,16 @@ st.markdown("---")
             key="grp_date_range"
         )
     with col_m:
-        # 변경: 최소 연속 가능 시간을 15분 단위(0.25시간)로 조절 가능하게 변경
-        min_h = st.number_input("⏱️ 최소 연속 가능 시간(시간)", min_value=0.25, max_value=12.0, value=2.0, step=0.25, key="grp_min_h")
-    
+        min_h = st.number_input("⏱️ 최소 연속 가능 시간(시간)", min_value=1, max_value=12, value=2, key="grp_min_h")
     st.markdown("🕐 **희망 시간대**")
     col_t1, col_t2 = st.columns(2)
-    
-    # 변경: 희망 시간대 시작/종료를 15분 단위 selectbox로 변경
-    time_options = [f"{h:02d}:{m:02d}" for h in range(24) for m in [0, 15, 30, 45]]
-    time_end_options = [f"{h:02d}:{m:02d}" for h in range(24) for m in [0, 15, 30, 45]] + ["24:00"]
-    
     with col_t1:
-        time_start_str = st.selectbox("시작 시각", options=time_options, index=time_options.index("09:00"), key="grp_time_start_sel")
+        time_start_h = st.selectbox("시작 시각", options=list(range(0, 24)), index=9, format_func=lambda x: f"{x:02d}:00", key="grp_time_start_sel")
     with col_t2:
-        time_end_str = st.selectbox("종료 시각", options=time_end_options, index=time_end_options.index("20:00"), key="grp_time_end_sel")
+        time_end_h = st.selectbox("종료 시각", options=list(range(1, 25)), index=20, format_func=lambda x: f"{x:02d}:00", key="grp_time_end_sel")
 
     if st.button("📊 일정 대조하기", type="primary", use_container_width=True):
-        sh_h, sh_m = map(int, time_start_str.split(":"))
-        if time_end_str == "24:00":
-            eh_h, eh_m = 24, 0
-        else:
-            eh_h, eh_m = map(int, time_end_str.split(":"))
-            
-        if (sh_h * 60 + sh_m) >= (eh_h * 60 + eh_m):
+        if time_start_h >= time_end_h:
             st.error("종료 시각은 시작 시각보다 늦어야 합니다.")
         else:
             if isinstance(date_range, tuple) and len(date_range) == 2:
@@ -1112,34 +1099,24 @@ st.markdown("---")
             free_slots_cache = {}
             cur = start_d
             while cur <= end_d:
-                slots = compute_free_slots(g_members, cur.year, cur.month, cur.day, 0, 24)
-                
-                # 설정한 희망 시간대 바깥의 슬롯은 전부 False 처리
-                start_slot = sh_h * 4 + sh_m // 15
-                end_slot = eh_h * 4 + eh_m // 15
-                for s_idx in range(96):
-                    if s_idx < start_slot or s_idx >= end_slot:
-                        slots[s_idx] = False
-                        
+                slots = compute_free_slots(g_members, cur.year, cur.month, cur.day, time_start_h, time_end_h)
                 max_c = curr_c = 0
-                for i in range(start_slot, end_slot):
+                for i in range(time_start_h * 4, time_end_h * 4):
                     if slots[i]:
                         curr_c += 1; max_c = max(max_c, curr_c)
                     else:
                         curr_c = 0
                 key = cur.strftime("%Y-%m-%d")
-                
-                date_colors[key]      = "green" if max_c >= int(min_h * 4) else "red"
+                date_colors[key]      = "green" if max_c >= min_h * 4 else "red"
                 free_slots_cache[key] = slots
                 cur += timedelta(days=1)
-                
             st.session_state.grp_date_colors  = date_colors
             st.session_state.grp_free_slots   = free_slots_cache
             st.session_state.grp_selected_day = None
             st.session_state.grp_start_d      = start_d
             st.session_state.grp_end_d        = end_d
-            st.session_state.grp_time_start   = sh_h
-            st.session_state.grp_time_end     = eh_h
+            st.session_state.grp_time_start   = time_start_h
+            st.session_state.grp_time_end     = time_end_h
             st.session_state.grp_confirmed_msg = None
             st.rerun()
 
@@ -1150,6 +1127,8 @@ st.markdown("---")
     colors  = st.session_state.grp_date_colors
     start_d = st.session_state.grp_start_d
     end_d   = st.session_state.grp_end_d
+    t_start = st.session_state.grp_time_start
+    t_end   = st.session_state.grp_time_end
 
     st.markdown("---")
     green_cnt = sum(1 for v in colors.values() if v == "green")
@@ -1226,27 +1205,16 @@ st.markdown("---")
         )
         st.markdown(bar_html, unsafe_allow_html=True)
 
-        # 변경: 약속시간 확정 항목도 공백 8칸 인덴트 준수하여 15분 단위로 깔끔하게 수정
+        # CHANGE 3: 약속시간 확정 기능 (날짜 분석 그래프 ~ 요일별 가능시간표 사이)
         st.markdown("---")
         st.markdown("### ⏰ 시간 직접 설정하여 확정하기")
         conf_c1, conf_c2 = st.columns(2)
-        
-        conf_options = [f"{h:02d}:{m:02d}" for h in range(24) for m in [0, 15, 30, 45]]
-        conf_end_options = [f"{h:02d}:{m:02d}" for h in range(24) for m in [0, 15, 30, 45]] + ["24:00"]
-        
         with conf_c1:
-            conf_start = st.selectbox("시작", options=conf_options, index=conf_options.index("09:00"), key="grp_conf_start")
+            conf_start = st.selectbox("시작", options=[f"{h:02d}:00" for h in range(24)], index=min(t_start, 23), key="grp_conf_start")
         with conf_c2:
-            conf_end = st.selectbox("종료", options=conf_end_options, index=conf_end_options.index("18:00"), key="grp_conf_end")
-            
+            conf_end = st.selectbox("종료", options=[f"{h:02d}:00" for h in range(1, 25)], index=min(t_end - 1, 23), key="grp_conf_end")
         if st.button("🔗 커스텀 시간으로 약속 확정", type="primary", use_container_width=True):
-            sh_h, sh_m = map(int, conf_start.split(":"))
-            if conf_end == "24:00":
-                eh_h, eh_m = 24, 0
-            else:
-                eh_h, eh_m = map(int, conf_end.split(":"))
-                
-            if (sh_h * 60 + sh_m) >= (eh_h * 60 + eh_m):
+            if conf_start >= conf_end:
                 st.error("종료 시각은 시작 시각보다 늦어야 합니다.")
             else:
                 st.session_state.grp_confirmed_msg = f"✅ **{sy}년 {sm}월 {sd}일 {conf_start} ~ {conf_end}** 약속이 확정되었습니다! 🎉"
@@ -1256,6 +1224,7 @@ st.markdown("---")
             st.balloons()
 
     st.markdown("---")
+    st.subheader("📊 요일별 공통 가능 시간표")
     w_days      = ["월","화","수","목","금","토","일"]
     hours_range = list(range(t_start, t_end))
     w_table = (
