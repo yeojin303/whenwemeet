@@ -1133,7 +1133,7 @@ if st.button("📊 일정 대조하기", type="primary", use_container_width=Tru
         free_slots_cache = {}
         cur = start_d
         while cur <= end_d:
-            slots = compute_free_slots(g_members, cur.year, cur.month, cur.day, start_h, end_h)
+            slots = compute_free_slots(room_members, cur.year, cur.month, cur.day, start_h, end_h)
             max_c = curr_c = 0
             for i in range(time_start_q, time_end_q):
                 if i < len(slots) and slots[i]:
