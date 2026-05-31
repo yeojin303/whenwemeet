@@ -183,14 +183,20 @@ def db_get_rooms(user_id):
     try:
         res = (
             supabase.table("room_members")
-            .select("room_code, nickname, rooms(name)")
+            .select("room_code, nickname, custom_name, rooms(name)")
             .eq("user_id", user_id)
             .execute()
         )
         rooms = {}
         for row in (res.data or []):
             code = row["room_code"]
-            rooms[code] = {"name": row["rooms"]["name"], "my_nickname": row["nickname"]}
+            original_name = row["rooms"]["name"]
+            display_name  = row.get("custom_name") or original_name
+            rooms[code] = {
+                "name": display_name,
+                "original_name": original_name,
+                "my_nickname": row["nickname"],
+            }
         return rooms
     except Exception:
         return {}
@@ -268,6 +274,16 @@ def db_get_room_info(room_code):
     except Exception:
         return None
 
+def db_update_custom_room_name(user_id, room_code, custom_name):
+    """내 room_members 행의 custom_name만 변경 (본인에게만 적용)"""
+    try:
+        supabase.table("room_members").update({"custom_name": custom_name}) \
+            .eq("user_id", user_id).eq("room_code", room_code).execute()
+        return True
+    except Exception as e:
+        st.error(f"방이름 변경 오류: {e}")
+        return False
+
 
 def init_session():
     now_kst = datetime.now(KST)
@@ -298,6 +314,7 @@ def init_session():
         "grp_time_end": 84,     # 21:00 in 15-min slot index
         "ft_success_msg": None,
         "grp_confirmed_msg": None,
+        "grp_edit_name_open": False,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -1054,6 +1071,10 @@ def page_group_room():
         return
     g_members = db_get_room_members(code)
 
+    # 내가 설정한 커스텀 이름이 있으면 그걸, 없으면 원래 방이름 사용
+    my_room_info = st.session_state.my_joined_rooms.get(code, {})
+    display_room_name = my_room_info.get("name") or room_info["name"]
+
     h1, h2 = st.columns([5, 2])
     with h2:
         if st.button("< 그룹 목록", use_container_width=True):
@@ -1062,8 +1083,34 @@ def page_group_room():
         st.warning(f"코드: `{code}`")
         if st.button("👥 참여자 보기", use_container_width=True):
             st.info(f"{len(g_members)}명: {', '.join(g_members.keys())}")
+        if st.button("✏️ 방이름 수정", use_container_width=True, key="grp_toggle_edit_name"):
+            st.session_state["grp_edit_name_open"] = not st.session_state.get("grp_edit_name_open", False)
+            st.rerun()
     with h1:
-        st.title(f"🏢 {room_info['name']}")
+        st.title(f"🏢 {display_room_name}")
+
+    if st.session_state.get("grp_edit_name_open", False):
+        st.markdown("#### ✏️ 나에게만 표시되는 방이름 수정")
+        st.caption(f"원래 방이름: {room_info['name']}")
+        new_custom_name = st.text_input(
+            "변경할 방이름",
+            value=display_room_name,
+            key="grp_custom_name_input"
+        )
+        rc1, rc2 = st.columns(2)
+        with rc1:
+            if st.button("💾 저장", key="grp_save_custom_name", use_container_width=True):
+                save_val = new_custom_name.strip() if new_custom_name.strip() else None
+                if db_update_custom_room_name(st.session_state.user_id, code, save_val):
+                    if code in st.session_state.my_joined_rooms:
+                        st.session_state.my_joined_rooms[code]["name"] = save_val or room_info["name"]
+                    st.session_state["grp_edit_name_open"] = False
+                    st.rerun()
+        with rc2:
+            if st.button("취소", key="grp_cancel_custom_name", use_container_width=True):
+                st.session_state["grp_edit_name_open"] = False
+                st.rerun()
+        st.markdown("---")
 
     st.markdown("---")
     st.subheader("🔍 약속 가능 날짜 찾기")
@@ -1272,6 +1319,17 @@ def page_group_room():
             if conf_start >= conf_end:
                 st.error("종료 시각은 시작 시각보다 늦어야 합니다.")
             else:
+                # 그룹 원래 방이름으로 일정 제목 생성
+                _rinfo = db_get_room_info(code)
+                _rname = _rinfo["name"] if _rinfo else code
+                confirmed_event = {
+                    "title": f"({_rname}) 약속",
+                    "start": f"{sel_day} {conf_start}",
+                    "end":   f"{sel_day} {conf_end}",
+                    "color": get_random_color(),
+                }
+                db_save_event(st.session_state.user_id, confirmed_event)
+                load_user_data()
                 st.session_state.grp_confirmed_msg = f"✅ **{sy}년 {sm}월 {sd}일 {conf_start} ~ {conf_end}** 약속이 확정되었습니다! 🎉"
                 st.rerun()
         if st.session_state.grp_confirmed_msg:
