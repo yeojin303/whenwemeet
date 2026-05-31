@@ -1171,7 +1171,7 @@ red_cnt   = sum(1 for v in colors.values() if v == "red")
 mc1, mc2, mc3 = st.columns(3)
 mc1.metric("✅ 가능한 날",   f"{green_cnt}일")
 mc2.metric("❌ 불가능한 날", f"{red_cnt}일")
-mc3.metric("👥 참여 인원",  f"{len(g_members)}명")
+mc3.metric("👥 참여 인원",  f"{len(room_members)}명")
 
 st.markdown("### 📅 일정 대조 달력")
 st.markdown("<div style='font-size:12px;margin-bottom:8px;color:#555;'>🟢 가능 | 🔴 불가 | ⚪ 범위 외</div>", unsafe_allow_html=True)
