@@ -1134,7 +1134,7 @@ def page_group_room():
     green_cnt = sum(1 for v in colors.values() if v == "green")
     red_cnt   = sum(1 for v in colors.values() if v == "red")
     mc1, mc2, mc3 = st.columns(3)
-    mc1.metric("✅ 가용한 날",   f"{green_cnt}일")
+    mc1.metric("✅ 가능한 날",   f"{green_cnt}일")
     mc2.metric("❌ 불가능한 날", f"{red_cnt}일")
     mc3.metric("👥 참여 인원",  f"{len(g_members)}명")
 
@@ -1205,7 +1205,7 @@ def page_group_room():
         )
         st.markdown(bar_html, unsafe_allow_html=True)
 
-        # CHANGE 3: 약속시간 확정 기능 (날짜 분석 그래프 ~ 요일별 가용시간표 사이)
+        # CHANGE 3: 약속시간 확정 기능 (날짜 분석 그래프 ~ 요일별 가능시간표 사이)
         st.markdown("---")
         st.markdown("### ⏰ 시간 직접 설정하여 확정하기")
         conf_c1, conf_c2 = st.columns(2)
@@ -1224,7 +1224,7 @@ def page_group_room():
             st.balloons()
 
     st.markdown("---")
-    st.subheader("📊 요일별 공통 가용 시간표")
+    st.subheader("📊 요일별 공통 가능 시간표")
     w_days      = ["월","화","수","목","금","토","일"]
     hours_range = list(range(t_start, t_end))
     w_table = (
