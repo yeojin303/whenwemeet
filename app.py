@@ -1228,7 +1228,6 @@ st.markdown("---")
     
     w_days = ["월", "화", "수", "목", "금", "토", "일"]
     
-    # 변경: 대조할 시간 범위를 정밀 연산을 위해 15분 단위 리스트로 생성
     w_table = (
         "<div style='overflow-x:auto;-webkit-overflow-scrolling:touch;'>"
         "<table style='width:100%;min-width:600px;table-layout:fixed;border-collapse:collapse;"
@@ -1240,7 +1239,6 @@ st.markdown("---")
         w_table += f"<th style='border:1px solid #ddd;padding:6px;'>{d}</th>"
     w_table += "</tr>"
     
-    # 24시간을 15분 단위 순회하며 세로형 테이블 작성
     for hour in range(24):
         for minute in [0, 15, 30, 45]:
             time_str = f"{hour:02d}:{minute:02d}"
@@ -1251,12 +1249,10 @@ st.markdown("---")
             
             for w_day in w_days:
                 is_free = True
-                # 모든 그룹 멤버의 시간표를 15분 단위로 빈틈없이 대조
                 for name, m_data in g_members.items():
                     for t in m_data.get("timetable", []):
                         if t["day"] == w_day:
                             try:
-                                # 문자열 비교(예: "09:00" <= "09:15" < "12:00")를 통한 정확한 15분 단위 필터링
                                 if t["start"] <= time_str < t["end"]:
                                     is_free = False
                                     break
