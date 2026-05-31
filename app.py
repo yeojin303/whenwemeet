@@ -294,8 +294,8 @@ def init_session():
         "grp_selected_day": None,
         "grp_start_d": None,
         "grp_end_d": None,
-        "grp_time_start": 9,
-        "grp_time_end": 21,
+        "grp_time_start": 36,   # 9:00 in 15-min slot index
+        "grp_time_end": 84,     # 21:00 in 15-min slot index
         "ft_success_msg": None,
         "grp_confirmed_msg": None,
     }
@@ -307,7 +307,6 @@ init_session()
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 
 
-# CHANGE 1: data_loaded 캐시 완전 제거 → 항상 DB에서 fresh 로드 (기기간 실시간 연동)
 def load_user_data():
     uid = st.session_state.user_id
     if not uid:
@@ -697,7 +696,6 @@ def page_my_calendar():
                         c3, c4     = st.columns(2)
                         new_e_date = c3.date_input("종료 날짜", value=e_d_obj)
                         new_e_time = c4.time_input("종료 시간", value=e_t_obj)
-                        # CHANGE 2: ✖닫기 버튼 제거 (x버튼과 동일 기능 중복)
                         col_save, col_del = st.columns(2)
                         saved   = col_save.form_submit_button("💾 저장", use_container_width=True)
                         deleted = col_del.form_submit_button("🗑️ 삭제", use_container_width=True)
@@ -972,13 +970,14 @@ def page_group_list():
 def slot_to_time(i):
     return f"{i // 4:02d}:{(i % 4) * 15:02d}"
 
-def compute_free_slots(g_members, year, month, day, time_start_h, time_end_h):
+# ── [MODIFIED] time_start_slot, time_end_slot: 15분 단위 슬롯 인덱스 (0~95 / 1~96)
+def compute_free_slots(g_members, year, month, day, time_start_slot, time_end_slot):
     curr_date = date_type(year, month, day)
     w_str = ["월","화","수","목","금","토","일"][curr_date.weekday()]
     d_str = f"{year}-{month:02d}-{day:02d}"
     SLOTS = 96
     slots = [False] * SLOTS
-    for i in range(time_start_h * 4, time_end_h * 4):
+    for i in range(time_start_slot, time_end_slot):
         slots[i] = True
     for name, m_data in g_members.items():
         for t in m_data.get("timetable", []):
@@ -1077,17 +1076,58 @@ def page_group_room():
             value=(date_type(now.year, now.month, 1), date_type(now.year, now.month, last_day)),
             key="grp_date_range"
         )
+
+    # ── [MODIFIED] 최소 연속 가능 시간: 15분 단위 슬롯 수로 선택
     with col_m:
-        min_h = st.number_input("⏱️ 최소 연속 가능 시간(시간)", min_value=1, max_value=12, value=2, key="grp_min_h")
+        def slot_count_to_label(s):
+            total_min = s * 15
+            h, m = total_min // 60, total_min % 60
+            if h == 0:
+                return f"{m}분"
+            elif m == 0:
+                return f"{h}시간"
+            else:
+                return f"{h}시간 {m}분"
+        min_slot_options = list(range(1, 49))  # 15분 ~ 12시간
+        min_slots = st.selectbox(
+            "⏱️ 최소 연속 가능 시간",
+            options=min_slot_options,
+            index=7,  # 기본값: 8슬롯 = 2시간
+            format_func=slot_count_to_label,
+            key="grp_min_slots"
+        )
+
+    # ── [MODIFIED] 희망 시간대: 15분 단위 선택
     st.markdown("🕐 **희망 시간대**")
     col_t1, col_t2 = st.columns(2)
+
+    def slot_idx_to_timestr(i):
+        return f"{i // 4:02d}:{(i % 4) * 15:02d}"
+
+    def end_slot_idx_to_timestr(i):
+        if i >= 96:
+            return "24:00"
+        return f"{i // 4:02d}:{(i % 4) * 15:02d}"
+
     with col_t1:
-        time_start_h = st.selectbox("시작 시각", options=list(range(0, 24)), index=9, format_func=lambda x: f"{x:02d}:00", key="grp_time_start_sel")
+        time_start_slot = st.selectbox(
+            "시작 시각",
+            options=list(range(96)),       # 슬롯 0(00:00) ~ 슬롯 95(23:45)
+            index=36,                       # 기본값: 슬롯 36 = 09:00
+            format_func=slot_idx_to_timestr,
+            key="grp_time_start_sel"
+        )
     with col_t2:
-        time_end_h = st.selectbox("종료 시각", options=list(range(1, 25)), index=20, format_func=lambda x: f"{x:02d}:00", key="grp_time_end_sel")
+        time_end_slot = st.selectbox(
+            "종료 시각",
+            options=list(range(1, 97)),    # 슬롯 1(00:15) ~ 슬롯 96(24:00)
+            index=83,                       # 기본값: 슬롯 84 = 21:00
+            format_func=end_slot_idx_to_timestr,
+            key="grp_time_end_sel"
+        )
 
     if st.button("📊 일정 대조하기", type="primary", use_container_width=True):
-        if time_start_h >= time_end_h:
+        if time_start_slot >= time_end_slot:
             st.error("종료 시각은 시작 시각보다 늦어야 합니다.")
         else:
             if isinstance(date_range, tuple) and len(date_range) == 2:
@@ -1099,15 +1139,15 @@ def page_group_room():
             free_slots_cache = {}
             cur = start_d
             while cur <= end_d:
-                slots = compute_free_slots(g_members, cur.year, cur.month, cur.day, time_start_h, time_end_h)
+                slots = compute_free_slots(g_members, cur.year, cur.month, cur.day, time_start_slot, time_end_slot)
                 max_c = curr_c = 0
-                for i in range(time_start_h * 4, time_end_h * 4):
+                for i in range(time_start_slot, time_end_slot):
                     if slots[i]:
                         curr_c += 1; max_c = max(max_c, curr_c)
                     else:
                         curr_c = 0
                 key = cur.strftime("%Y-%m-%d")
-                date_colors[key]      = "green" if max_c >= min_h * 4 else "red"
+                date_colors[key]      = "green" if max_c >= min_slots else "red"
                 free_slots_cache[key] = slots
                 cur += timedelta(days=1)
             st.session_state.grp_date_colors  = date_colors
@@ -1115,8 +1155,8 @@ def page_group_room():
             st.session_state.grp_selected_day = None
             st.session_state.grp_start_d      = start_d
             st.session_state.grp_end_d        = end_d
-            st.session_state.grp_time_start   = time_start_h
-            st.session_state.grp_time_end     = time_end_h
+            st.session_state.grp_time_start   = time_start_slot
+            st.session_state.grp_time_end     = time_end_slot
             st.session_state.grp_confirmed_msg = None
             st.rerun()
 
@@ -1205,14 +1245,29 @@ def page_group_room():
         )
         st.markdown(bar_html, unsafe_allow_html=True)
 
-        # CHANGE 3: 약속시간 확정 기능 (날짜 분석 그래프 ~ 요일별 가능시간표 사이)
+        # ── [MODIFIED] 약속 확정: 15분 단위 선택
         st.markdown("---")
         st.markdown("### ⏰ 시간 직접 설정하여 확정하기")
+        conf_opts_start = [f"{i // 4:02d}:{(i % 4) * 15:02d}" for i in range(96)]
+        conf_opts_end   = [
+            f"{i // 4:02d}:{(i % 4) * 15:02d}" if i < 96 else "24:00"
+            for i in range(1, 97)
+        ]
         conf_c1, conf_c2 = st.columns(2)
         with conf_c1:
-            conf_start = st.selectbox("시작", options=[f"{h:02d}:00" for h in range(24)], index=min(t_start, 23), key="grp_conf_start")
+            conf_start = st.selectbox(
+                "시작",
+                options=conf_opts_start,
+                index=min(t_start, 95),
+                key="grp_conf_start"
+            )
         with conf_c2:
-            conf_end = st.selectbox("종료", options=[f"{h:02d}:00" for h in range(1, 25)], index=min(t_end - 1, 23), key="grp_conf_end")
+            conf_end = st.selectbox(
+                "종료",
+                options=conf_opts_end,
+                index=min(t_end - 1, 95),
+                key="grp_conf_end"
+            )
         if st.button("🔗 커스텀 시간으로 약속 확정", type="primary", use_container_width=True):
             if conf_start >= conf_end:
                 st.error("종료 시각은 시작 시각보다 늦어야 합니다.")
@@ -1223,35 +1278,48 @@ def page_group_room():
             st.success(st.session_state.grp_confirmed_msg)
             st.balloons()
 
+    # ── [MODIFIED] 요일별 공통 가능 시간표: 15분 단위
     st.markdown("---")
-    st.subheader("📊 요일별 공통 가능 시간표")
+    st.subheader("📊 요일별 공통 가능 시간표 (15분 단위)")
     w_days      = ["월","화","수","목","금","토","일"]
-    hours_range = list(range(t_start, t_end))
+    slots_range = list(range(t_start, t_end))  # 15분 단위 슬롯 인덱스
     w_table = (
         "<div style='overflow-x:auto;-webkit-overflow-scrolling:touch;'>"
-        "<table style='width:100%;min-width:500px;table-layout:fixed;text-align:center;"
-        "font-size:10px;border-collapse:collapse;border:1px solid #ddd;word-break:break-all;'>"
-        "<tr style='background-color:#F5F5F5;'><th style='padding:6px;border:1px solid #ddd;'>요일/시간</th>"
+        "<table style='width:100%;min-width:600px;table-layout:auto;text-align:center;"
+        "font-size:9px;border-collapse:collapse;border:1px solid #ddd;'>"
+        "<tr style='background-color:#F5F5F5;'>"
+        "<th style='padding:4px 6px;border:1px solid #ddd;white-space:nowrap;'>요일/시간</th>"
     )
-    for h in hours_range:
-        w_table += f"<th style='border:1px solid #ddd;padding:2px;'>{h:02d}</th>"
+    for slot_i in slots_range:
+        t_label = slot_to_time(slot_i)
+        # 정각(:00)에는 시간 표시, 나머지는 분만 표시
+        if slot_i % 4 == 0:
+            header_txt = t_label
+        else:
+            header_txt = f":{(slot_i % 4) * 15:02d}"
+        w_table += (
+            f"<th style='border:1px solid #ddd;padding:2px 1px;white-space:nowrap;"
+            f"font-size:8px;min-width:18px;'>{header_txt}</th>"
+        )
     w_table += "</tr>"
     for w_day in w_days:
-        w_table += f"<tr><td style='font-weight:bold;border:1px solid #ddd;padding:6px;'>{w_day}</td>"
-        for h in hours_range:
+        w_table += f"<tr><td style='font-weight:bold;border:1px solid #ddd;padding:4px 6px;white-space:nowrap;'>{w_day}</td>"
+        for slot_i in slots_range:
             is_free = True
             for name, m_data in g_members.items():
                 for t in m_data.get("timetable", []):
                     if t["day"] == w_day:
                         try:
-                            sh = int(t["start"].split(":")[0])
-                            eh = int(t["end"].split(":")[0])
-                            if sh <= h < eh:
+                            sh, sm_v = map(int, t["start"].split(":"))
+                            eh, em_v = map(int, t["end"].split(":"))
+                            s_slot = sh * 4 + sm_v // 15
+                            e_slot = eh * 4 + em_v // 15
+                            if s_slot <= slot_i < e_slot:
                                 is_free = False
                         except Exception:
                             pass
             bg = "#4CAF50" if is_free else "#F44336"
-            w_table += f"<td style='background-color:{bg};border:1px solid #ddd;height:22px;'></td>"
+            w_table += f"<td style='background-color:{bg};border:1px solid #ddd;height:20px;min-width:18px;'></td>"
         w_table += "</tr>"
     w_table += "</table></div>"
     st.markdown(w_table, unsafe_allow_html=True)
