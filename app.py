@@ -746,24 +746,29 @@ def page_my_calendar():
                         st.rerun()
                 # 인라인 수정 폼
                 if is_editing:
-                    new_memo_title = st.text_input(
-                        "메모 제목 수정",
-                        value=m["title"],
-                        key=f"memo_edit_input_{memo_id}"
-                    )
-                    if st.button("💾 수정 완료", key=f"memo_edit_save_{memo_id}", use_container_width=True):
-                        if new_memo_title.strip():
-                            db_save_memo_event(st.session_state.user_id, {
-                                "id":    memo_id,
-                                "title": new_memo_title.strip(),
-                                "date":  active_str,
-                                "color": m["color"],
-                            })
-                            st.session_state["memo_editing_id"] = None
-                            load_user_data()
-                            st.rerun()
-                        else:
-                            st.warning("제목을 입력해주세요.")
+    new_memo_title = st.text_input(
+        "메모 제목 수정",
+        value=m["title"],
+        key=f"memo_edit_input_{memo_id}"
+    )
+    new_memo_date = st.date_input(
+        "날짜 변경",
+        value=datetime.strptime(m["date"], "%Y-%m-%d").date(),
+        key=f"memo_edit_date_{memo_id}"
+    )
+    if st.button("💾 수정 완료", key=f"memo_edit_save_{memo_id}", use_container_width=True):
+        if new_memo_title.strip():
+            db_save_memo_event(st.session_state.user_id, {
+                "id":    memo_id,
+                "title": new_memo_title.strip(),
+                "date":  str(new_memo_date),
+                "color": m["color"],
+            })
+            st.session_state["memo_editing_id"] = None
+            load_user_data()
+            st.rerun()
+        else:
+            st.warning("제목을 입력해주세요.")
         # ── 메모 일정 추가
         memo_col1, memo_col2 = st.columns([5, 1])
         with memo_col1:
