@@ -787,6 +787,16 @@ def page_my_calendar():
             if ev["start"].split()[0] <= active_str <= ev["end"].split()[0]:
                 s_time_part = ev["start"].split()[1] if " " in ev["start"] else "00:00"
                 e_time_part = ev["end"].split()[1] if " " in ev["end"] else "23:59"
+                s_date_part = ev["start"].split()[0]
+                e_date_part = ev["end"].split()[0]
+                is_multiday = (s_date_part != e_date_part)
+                if is_multiday:
+                    # 시작날짜 M/D 형식
+                    sd = datetime.strptime(s_date_part, "%Y-%m-%d")
+                    ed = datetime.strptime(e_date_part, "%Y-%m-%d")
+                    time_display = f"{sd.month}/{sd.day} {s_time_part} ~ {ed.month}/{ed.day} {e_time_part}"
+                else:
+                    time_display = f"{s_time_part} ~ {e_time_part}"
                 combined_day_items.append({
                     "is_exception": False,
                     "id": ev.get("id") or f"idx_{i}",
@@ -795,6 +805,7 @@ def page_my_calendar():
                     "color": ev.get("color", "#4D96FF"),
                     "start_time": s_time_part,
                     "end_time": e_time_part,
+                    "time_display": time_display,
                     "raw": ev
                 })
         for ex in st.session_state.my_exceptions:
@@ -806,7 +817,8 @@ def page_my_calendar():
                     "title": ex["title"],
                     "color": ex["color"],
                     "start_time": ex["start_time"],
-                    "end_time": ex["end_time"]
+                    "end_time": ex["end_time"],
+                    "time_display": f"{ex['start_time']} ~ {ex['end_time']}",
                 })
         combined_day_items = sorted(combined_day_items, key=lambda x: x["start_time"])
 
@@ -829,7 +841,7 @@ def page_my_calendar():
                         f"<div style='background:{bg_s};border-left:4px solid {bdr_c};"
                         f"border-radius:0 8px 8px 0;padding:8px 12px;margin-bottom:4px;'>"
                         f"<div style='font-weight:700;font-size:14px;color:{color};'>{item['title']}</div>"
-                        f"<div style='font-size:12px;color:#555;margin-top:2px;'>🕐 {s_t} ~ {e_t}</div>"
+                        f"<div style='font-size:12px;color:#555;margin-top:2px;'>🕐 {item.get('time_display', s_t + ' ~ ' + e_t)}</div>"
                         f"</div>",
                         unsafe_allow_html=True
                     )
