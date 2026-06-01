@@ -131,37 +131,6 @@ def db_delete_event(event_id):
     except Exception as e:
         st.error(f"일정 삭제 오류: {e}")
 
-def db_get_user_memo_events(user_id):
-    """시간이 할애되지 않는 메모성 일정 조회 (memo_events 테이블)"""
-    try:
-        res = supabase.table("memo_events").select("*").eq("user_id", user_id).execute()
-        return res.data or []
-    except Exception:
-        return []
-
-def db_save_memo_event(user_id, memo):
-    """메모성 일정 저장/수정"""
-    try:
-        payload = {
-            "user_id": user_id,
-            "title": memo["title"],
-            "date": memo["date"],
-            "color": memo.get("color", get_random_color()),
-        }
-        if memo.get("id"):
-            supabase.table("memo_events").update(payload).eq("id", memo["id"]).execute()
-        else:
-            supabase.table("memo_events").insert(payload).execute()
-    except Exception as e:
-        st.error(f"메모 일정 저장 오류: {e}")
-
-def db_delete_memo_event(memo_id):
-    """메모성 일정 삭제"""
-    try:
-        supabase.table("memo_events").delete().eq("id", memo_id).execute()
-    except Exception as e:
-        st.error(f"메모 일정 삭제 오류: {e}")
-
 def db_get_timetable(user_id):
     try:
         res = supabase.table("timetable").select("*").eq("user_id", user_id).execute()
@@ -343,7 +312,6 @@ def init_session():
         "my_events": [],
         "my_timetable": [],
         "my_exceptions": [],
-        "my_memo_events": [],
         "current_group_code": None,
         "my_nickname": "",
         "fixed_expander_open": False,
@@ -412,10 +380,6 @@ def load_user_data():
             })
     st.session_state.my_exceptions = exceptions_list
     st.session_state.my_joined_rooms = db_get_rooms(uid)
-    st.session_state.my_memo_events = [
-        {"id": m["id"], "title": m["title"], "date": m["date"], "color": m.get("color", "#9E9E9E")}
-        for m in db_get_user_memo_events(uid)
-    ]
 
 def do_logout():
     for key in list(st.session_state.keys()):
@@ -442,7 +406,7 @@ def render_header(title, back_page=None, back_label="← 홈으로"):
         st.title(title)
 
 
-def build_calendar_html(year, month, events, exceptions=None, selected_date_str=None, memo_events=None):
+def build_calendar_html(year, month, events, exceptions=None, selected_date_str=None):
     today = datetime.now(KST)
     cal_matrix = calendar.monthcalendar(year, month)
     day_names  = ["일", "월", "화", "수", "목", "금", "토"]
@@ -466,11 +430,6 @@ def build_calendar_html(year, month, events, exceptions=None, selected_date_str=
                 cls += " wwm-cell-sel"
             elif is_today:
                 cls += " wwm-cell-today"
-            memo_items = []
-            if memo_events:
-                for m in memo_events:
-                    if m["date"] == date_str:
-                        memo_items.append({"title": m["title"], "color": m.get("color", "#9E9E9E"), "is_memo": True})
             day_display_items = []
             for ev in events:
                 if ev["start"].split()[0] <= date_str <= ev["end"].split()[0]:
@@ -481,17 +440,13 @@ def build_calendar_html(year, month, events, exceptions=None, selected_date_str=
                     if ex["date"] == date_str:
                         day_display_items.append({"title": ex["title"], "color": ex["color"], "time": ex["start_time"]})
             day_display_items = sorted(day_display_items, key=lambda x: x["time"])
-            all_items = memo_items + day_display_items
             bars = ""
-            for item in all_items[:2]:
+            for item in day_display_items[:2]:
                 c = item["color"]
                 t_s = item["title"][:4] + ("…" if len(item["title"]) > 4 else "")
-                if item.get("is_memo"):
-                    bars += f'<div class="wwm-evbar" style="background:{c};opacity:0.85;font-style:italic;">📌{t_s}</div>'
-                else:
-                    bars += f'<div class="wwm-evbar" style="background:{c};">{t_s}</div>'
-            if len(all_items) > 2:
-                bars += f'<div class="wwm-more">+{len(all_items)-2}</div>'
+                bars += f'<div class="wwm-evbar" style="background:{c};">{t_s}</div>'
+            if len(day_display_items) > 2:
+                bars += f'<div class="wwm-more">+{len(day_display_items)-2}</div>'
             today_lbl = '<span class="wwm-today-lbl">Today</span>' if is_today else ""
             html += (
                 f'<div class="{cls}">'
@@ -602,7 +557,7 @@ def page_home():
         st.title("🤝 When We Meet")
     now = datetime.now(KST)
     st.subheader(f"📅 {now.year}년 {now.month}월")
-    cal_html = build_calendar_html(now.year, now.month, st.session_state.my_events, st.session_state.my_exceptions, None, st.session_state.my_memo_events)
+    cal_html = build_calendar_html(now.year, now.month, st.session_state.my_events, st.session_state.my_exceptions, None)
     st.markdown(cal_html, unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("---")
@@ -664,7 +619,7 @@ def page_my_calendar():
         sel_date_str = None
         st.session_state.cal_selected_date = None
 
-    cal_html = build_calendar_html(cur_year, cur_month, st.session_state.my_events, st.session_state.my_exceptions, sel_date_str, st.session_state.my_memo_events)
+    cal_html = build_calendar_html(cur_year, cur_month, st.session_state.my_events, st.session_state.my_exceptions, sel_date_str)
     st.markdown(cal_html, unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("**📌 날짜를 선택하면 일정을 확인·추가할 수 있어요**")
@@ -686,46 +641,6 @@ def page_my_calendar():
     if st.session_state.cal_selected_date:
         active_date = st.session_state.cal_selected_date
         active_str  = active_date.strftime("%Y-%m-%d")
-
-        st.markdown("---")
-        st.markdown(f"#### 📅 {active_date.year}년 {active_date.month}월 {active_date.day}일")
-
-        # ── 메모성 일정 (시간 할애 없음, 위에 표시)
-        day_memos = [m for m in st.session_state.my_memo_events if m["date"] == active_str]
-        if day_memos:
-            st.markdown("**📌 메모 일정 (시간 미지정):**")
-            for m in day_memos:
-                col_bar, col_del = st.columns([6, 1])
-                with col_bar:
-                    st.markdown(
-                        f"<div style='background:rgba(158,158,158,0.12);border-left:4px solid {m['color']};"
-                        f"border-radius:0 8px 8px 0;padding:8px 12px;margin-bottom:4px;'>"
-                        f"<div style='font-weight:700;font-size:14px;color:{m['color']};'>📌 {m['title']}</div>"
-                        f"<div style='font-size:11px;color:#888;margin-top:2px;'>시간 미지정 메모</div>"
-                        f"</div>",
-                        unsafe_allow_html=True
-                    )
-                with col_del:
-                    if st.button("🗑️", key=f"del_memo_{m['id']}", use_container_width=True):
-                        db_delete_memo_event(m["id"])
-                        load_user_data()
-                        st.rerun()
-
-        # ── 메모 일정 추가 폼
-        with st.expander("📌 메모 일정 추가 (시간 미지정)", expanded=False):
-            memo_title = st.text_input("메모 제목 (예: 과제 마감)", key="memo_title_input")
-            if st.button("📌 메모 저장", key="memo_save_btn", use_container_width=True):
-                if not memo_title:
-                    st.warning("메모 제목을 입력해주세요.")
-                else:
-                    db_save_memo_event(st.session_state.user_id, {
-                        "title": memo_title,
-                        "date": active_str,
-                        "color": "#9E9E9E",
-                    })
-                    load_user_data()
-                    st.toast("✅ 메모 일정이 추가되었습니다!")
-                    st.rerun()
 
         combined_day_items = []
         for i, ev in enumerate(st.session_state.my_events):
@@ -754,6 +669,9 @@ def page_my_calendar():
                     "end_time": ex["end_time"]
                 })
         combined_day_items = sorted(combined_day_items, key=lambda x: x["start_time"])
+
+        st.markdown("---")
+        st.markdown(f"#### 📅 {active_date.year}년 {active_date.month}월 {active_date.day}일")
 
         if combined_day_items:
             st.markdown("**이 날 일정:**")
@@ -1100,59 +1018,33 @@ def page_group_list():
 def slot_to_time(i):
     return f"{i // 4:02d}:{(i % 4) * 15:02d}"
 
-# ── [MODIFIED] time_start_slot, time_end_slot: 15분 단위 슬롯 인덱스 (0~95 / 1~144, 다음날 포함)
+# ── [MODIFIED] time_start_slot, time_end_slot: 15분 단위 슬롯 인덱스 (0~95 / 1~96)
 def compute_free_slots(g_members, year, month, day, time_start_slot, time_end_slot):
     curr_date = date_type(year, month, day)
-    next_date = curr_date + timedelta(days=1)
-    w_str      = ["월","화","수","목","금","토","일"][curr_date.weekday()]
-    w_str_next = ["월","화","수","목","금","토","일"][next_date.weekday()]
-    d_str      = curr_date.strftime("%Y-%m-%d")
-    d_str_next = next_date.strftime("%Y-%m-%d")
-    # 최대 슬롯 수: 다음날 포함 시 192(48시간), 아니면 96
-    MAX_SLOTS = 192
-    slots = [False] * MAX_SLOTS
-    for i in range(time_start_slot, min(time_end_slot, MAX_SLOTS)):
+    w_str = ["월","화","수","목","금","토","일"][curr_date.weekday()]
+    d_str = f"{year}-{month:02d}-{day:02d}"
+    SLOTS = 96
+    slots = [False] * SLOTS
+    for i in range(time_start_slot, time_end_slot):
         slots[i] = True
     for name, m_data in g_members.items():
         for t in m_data.get("timetable", []):
-            # 당일 요일
             if t["day"] == w_str:
                 if any(str(ex) == d_str for ex in t.get("exceptions", [])):
+                    continue
+                try:
+                    sh, sm = map(int, t["start"].split(":"))
+                    eh, em = map(int, t["end"].split(":"))
+                    for i in range(sh * 4 + sm // 15, eh * 4 + em // 15):
+                        slots[i] = False
+                except Exception:
                     pass
-                else:
-                    try:
-                        sh, sm = map(int, t["start"].split(":"))
-                        eh, em = map(int, t["end"].split(":"))
-                        for i in range(sh * 4 + sm // 15, eh * 4 + em // 15):
-                            slots[i] = False
-                    except Exception:
-                        pass
-            # 다음날 요일 (다음날 새벽까지 보는 경우)
-            if time_end_slot > 96 and t["day"] == w_str_next:
-                if any(str(ex) == d_str_next for ex in t.get("exceptions", [])):
-                    pass
-                else:
-                    try:
-                        sh, sm = map(int, t["start"].split(":"))
-                        eh, em = map(int, t["end"].split(":"))
-                        for i in range(96 + sh * 4 + sm // 15, 96 + eh * 4 + em // 15):
-                            slots[i] = False
-                    except Exception:
-                        pass
         for ev in m_data.get("events", []):
             if ev["start"].split()[0] <= d_str <= ev["end"].split()[0]:
                 try:
                     sh, sm = map(int, ev["start"].split()[1].split(":"))
                     eh, em = map(int, ev["end"].split()[1].split(":"))
                     for i in range(sh * 4 + sm // 15, eh * 4 + em // 15):
-                        slots[i] = False
-                except Exception:
-                    pass
-            if time_end_slot > 96 and ev["start"].split()[0] <= d_str_next <= ev["end"].split()[0]:
-                try:
-                    sh, sm = map(int, ev["start"].split()[1].split(":"))
-                    eh, em = map(int, ev["end"].split()[1].split(":"))
-                    for i in range(96 + sh * 4 + sm // 15, 96 + eh * 4 + em // 15):
                         slots[i] = False
                 except Exception:
                     pass
@@ -1350,7 +1242,7 @@ def page_group_room():
 
     def end_slot_idx_to_timestr(i):
         if i >= 96:
-            return f"다음날 {(i-96) // 4:02d}:{((i-96) % 4) * 15:02d}"
+            return "24:00"
         return f"{i // 4:02d}:{(i % 4) * 15:02d}"
 
     with col_t1:
@@ -1364,7 +1256,7 @@ def page_group_room():
     with col_t2:
         time_end_slot = st.selectbox(
             "종료 시각",
-            options=list(range(1, 145)),   # 슬롯 1(00:15) ~ 슬롯 144(다음날 12:00)
+            options=list(range(1, 97)),    # 슬롯 1(00:15) ~ 슬롯 96(24:00)
             index=83,                       # 기본값: 슬롯 84 = 21:00
             format_func=end_slot_idx_to_timestr,
             key="grp_time_end_sel"
@@ -1465,20 +1357,16 @@ def page_group_room():
         st.markdown("---")
         st.markdown(f"### 📊 {sy}년 {sm}월 {sd}일 분석")
         bar_rows = []
-        total_hours = (t_end + 3) // 4  # 다음날 포함 시 24시간 초과 가능
-        if t_end > 96:
-            total_hours = 24 + (t_end - 96 + 3) // 4
-        for hour_idx in range(max(24, total_hours)):
-            hour_label = f"다음날 {hour_idx-24:02d}:00" if hour_idx >= 24 else f"{hour_idx:02d}:00"
+        for hour in range(24):
             cells = "".join(
                 '<div style="background:{bg};flex:1;height:18px;border-radius:2px;margin:0 1px;"></div>'.format(
-                    bg="#4CAF50" if (slots[hour_idx*4+mi] if hour_idx*4+mi < len(slots) else False) else "#F44336"
+                    bg="#4CAF50" if (slots[hour*4+mi] if hour*4+mi < len(slots) else False) else "#F44336"
                 )
                 for mi in range(4)
             )
             bar_rows.append(
                 '<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px;">' +
-                f'<span style="font-size:10px;color:#555;min-width:60px;text-align:right;">{hour_label}</span>' +
+                f'<span style="font-size:10px;color:#555;min-width:34px;text-align:right;">{hour:02d}:00</span>' +
                 f'<div style="display:flex;flex:1;">{cells}</div>' +
                 '</div>'
             )
@@ -1493,188 +1381,96 @@ def page_group_room():
         )
         st.markdown(bar_html, unsafe_allow_html=True)
 
-        # ── [MODIFIED] 약속 확정: 15분 단위 선택 (다음날 포함)
+        # ── [MODIFIED] 약속 확정: 15분 단위 선택
         st.markdown("---")
         st.markdown("### ⏰ 시간 직접 설정하여 확정하기")
-        def conf_start_label(i):
-            return f"{i // 4:02d}:{(i % 4) * 15:02d}"
-        def conf_end_label(i):
-            if i >= 96:
-                return f"다음날 {(i-96) // 4:02d}:{((i-96) % 4) * 15:02d}"
-            return f"{i // 4:02d}:{(i % 4) * 15:02d}"
-        conf_opts_start = list(range(96))
-        conf_opts_end   = list(range(1, 145))  # 다음날 12:00까지
+        conf_opts_start = [f"{i // 4:02d}:{(i % 4) * 15:02d}" for i in range(96)]
+        conf_opts_end   = [
+            f"{i // 4:02d}:{(i % 4) * 15:02d}" if i < 96 else "24:00"
+            for i in range(1, 97)
+        ]
         conf_c1, conf_c2 = st.columns(2)
         with conf_c1:
-            conf_start_idx = st.selectbox(
+            conf_start = st.selectbox(
                 "시작",
                 options=conf_opts_start,
                 index=min(t_start, 95),
-                format_func=conf_start_label,
                 key="grp_conf_start"
             )
-            conf_start = conf_start_label(conf_start_idx)
         with conf_c2:
-            conf_end_idx = st.selectbox(
+            conf_end = st.selectbox(
                 "종료",
                 options=conf_opts_end,
-                index=min(t_end - 1, 143),
-                format_func=conf_end_label,
+                index=min(t_end - 1, 95),
                 key="grp_conf_end"
             )
-            conf_end_raw = conf_end_label(conf_end_idx)
-            # 다음날이면 날짜를 다음날로 계산
-            if conf_end_idx >= 96:
-                sel_date_obj_next = date_type.fromisoformat(sel_day) + timedelta(days=1)
-                conf_end_date = sel_date_obj_next.strftime("%Y-%m-%d")
-                conf_end_time = f"{(conf_end_idx-96) // 4:02d}:{((conf_end_idx-96) % 4) * 15:02d}"
-            else:
-                conf_end_date = sel_day
-                conf_end_time = conf_end_raw
         if st.button("🔗 커스텀 시간으로 약속 확정", type="primary", use_container_width=True):
-            if conf_start_idx >= conf_end_idx:
+            if conf_start >= conf_end:
                 st.error("종료 시각은 시작 시각보다 늦어야 합니다.")
             else:
                 # 내가 설정한 커스텀 이름 우선, 없으면 원래 방이름
                 _my_room = st.session_state.my_joined_rooms.get(code, {})
                 _rinfo   = db_get_room_info(code)
                 _rname   = _my_room.get("name") or (_rinfo["name"] if _rinfo else code)
-                end_label_display = conf_end_raw if conf_end_idx < 96 else f"다음날 {conf_end_time}"
                 confirmed_event = {
                     "title": f"{_rname} 약속",
                     "start": f"{sel_day} {conf_start}",
-                    "end":   f"{conf_end_date} {conf_end_time}",
+                    "end":   f"{sel_day} {conf_end}",
                     "color": get_random_color(),
                 }
                 db_save_event(st.session_state.user_id, confirmed_event)
                 load_user_data()
-                st.session_state.grp_confirmed_msg = f"✅ **{sy}년 {sm}월 {sd}일 {conf_start} ~ {end_label_display}** 약속이 확정되었습니다! 🎉"
+                st.session_state.grp_confirmed_msg = f"✅ **{sy}년 {sm}월 {sd}일 {conf_start} ~ {conf_end}** 약속이 확정되었습니다! 🎉"
                 st.rerun()
         if st.session_state.grp_confirmed_msg:
             st.success(st.session_state.grp_confirmed_msg)
             st.balloons()
 
-    # ── n박 n일 약속 잡기
+    # ── [MODIFIED] 요일별 공통 가능 시간표: 15분 단위
     st.markdown("---")
-    st.subheader("🏕️ n박 n일 약속 잡기")
-    st.caption("시작일~종료일 사이의 날엔 시간이 할애되는 일정이 없어야 가능합니다.")
-    nd_c1, nd_c2 = st.columns(2)
-    with nd_c1:
-        nd_start_date = st.date_input(
-            "시작 날짜", value=st.session_state.grp_start_d or datetime.now(KST).date(),
-            key="nd_start_date"
-        )
-        nd_start_opts = [f"{i // 4:02d}:{(i % 4) * 15:02d}" for i in range(96)]
-        nd_start_time = st.selectbox("시작 시각", options=nd_start_opts, index=36, key="nd_start_time")
-    with nd_c2:
-        nd_end_date = st.date_input(
-            "종료 날짜", value=(st.session_state.grp_start_d or datetime.now(KST).date()) + timedelta(days=1),
-            key="nd_end_date"
-        )
-        nd_end_opts = [f"{i // 4:02d}:{(i % 4) * 15:02d}" for i in range(96)]
-        nd_end_time = st.selectbox("종료 시각", options=nd_end_opts, index=72, key="nd_end_time")  # 기본 18:00
-
-    if st.button("🏕️ n박 n일 가능 여부 확인 및 확정", type="secondary", use_container_width=True):
-        if nd_end_date <= nd_start_date:
-            st.error("종료 날짜는 시작 날짜 이후여야 합니다.")
+    st.subheader("📊 요일별 공통 가능 시간표 (15분 단위)")
+    w_days      = ["월","화","수","목","금","토","일"]
+    slots_range = list(range(t_start, t_end))  # 15분 단위 슬롯 인덱스
+    w_table = (
+        "<div style='overflow-x:auto;-webkit-overflow-scrolling:touch;'>"
+        "<table style='width:100%;min-width:600px;table-layout:auto;text-align:center;"
+        "font-size:9px;border-collapse:collapse;border:1px solid #ddd;'>"
+        "<tr style='background-color:#F5F5F5;'>"
+        "<th style='padding:4px 6px;border:1px solid #ddd;white-space:nowrap;'>요일/시간</th>"
+    )
+    for slot_i in slots_range:
+        t_label = slot_to_time(slot_i)
+        # 정각(:00)에는 시간 표시, 나머지는 분만 표시
+        if slot_i % 4 == 0:
+            header_txt = t_label
         else:
-            # 중간 날짜들 (시작일 제외, 종료일 제외한 날들) — 시간 할애 일정 없어야 함
-            middle_dates = []
-            chk = nd_start_date + timedelta(days=1)
-            while chk < nd_end_date:
-                middle_dates.append(chk)
-                chk += timedelta(days=1)
-
-            nd_feasible = True
-            nd_fail_reasons = []
-
-            for chk_date in middle_dates:
-                chk_str = chk_date.strftime("%Y-%m-%d")
-                chk_wday = ["월","화","수","목","금","토","일"][chk_date.weekday()]
-                for name, m_data in g_members.items():
-                    # 고정 시간표 체크 (예외 날짜 제외)
-                    for t in m_data.get("timetable", []):
-                        if t["day"] == chk_wday:
-                            if any(str(ex) == chk_str for ex in t.get("exceptions", [])):
-                                continue
-                            nd_feasible = False
-                            nd_fail_reasons.append(f"{name}: {chk_date.month}/{chk_date.day}({chk_wday}) 고정 시간표 '{t['title']}'")
-                    # 일정 체크
-                    for ev in m_data.get("events", []):
-                        if ev["start"].split()[0] <= chk_str <= ev["end"].split()[0]:
-                            nd_feasible = False
-                            nd_fail_reasons.append(f"{name}: {chk_date.month}/{chk_date.day} 일정 '{ev['title']}'")
-
-            # 시작일 nd_start_time 이후, 종료일 nd_end_time 이전도 체크
-            for boundary_date, boundary_time_str, after in [(nd_start_date, nd_start_time, True), (nd_end_date, nd_end_time, False)]:
-                bd_str  = boundary_date.strftime("%Y-%m-%d")
-                bd_wday = ["월","화","수","목","금","토","일"][boundary_date.weekday()]
-                bh, bm  = map(int, boundary_time_str.split(":"))
-                b_slot  = bh * 4 + bm // 15
-                for name, m_data in g_members.items():
-                    for t in m_data.get("timetable", []):
-                        if t["day"] == bd_wday:
-                            if any(str(ex) == bd_str for ex in t.get("exceptions", [])):
-                                continue
-                            try:
-                                sh, sm_v = map(int, t["start"].split(":"))
-                                eh, em_v = map(int, t["end"].split(":"))
-                                s_slot = sh * 4 + sm_v // 15
-                                e_slot = eh * 4 + em_v // 15
-                                if after:  # 시작일: start_time 이후에 겹치는 일정
-                                    if e_slot > b_slot:
-                                        nd_feasible = False
-                                        nd_fail_reasons.append(f"{name}: {boundary_date.month}/{boundary_date.day}({bd_wday}) 고정 '{t['title']}'")
-                                else:  # 종료일: end_time 이전에 겹치는 일정
-                                    if s_slot < b_slot:
-                                        nd_feasible = False
-                                        nd_fail_reasons.append(f"{name}: {boundary_date.month}/{boundary_date.day}({bd_wday}) 고정 '{t['title']}'")
-                            except Exception:
-                                pass
-                    for ev in m_data.get("events", []):
-                        if ev["start"].split()[0] <= bd_str <= ev["end"].split()[0]:
-                            try:
-                                sh, sm_v = map(int, ev["start"].split()[1].split(":"))
-                                eh, em_v = map(int, ev["end"].split()[1].split(":"))
-                                s_slot = sh * 4 + sm_v // 15
-                                e_slot = eh * 4 + em_v // 15
-                                if after:
-                                    if e_slot > b_slot:
-                                        nd_feasible = False
-                                        nd_fail_reasons.append(f"{name}: {boundary_date.month}/{boundary_date.day} 일정 '{ev['title']}'")
-                                else:
-                                    if s_slot < b_slot:
-                                        nd_feasible = False
-                                        nd_fail_reasons.append(f"{name}: {boundary_date.month}/{boundary_date.day} 일정 '{ev['title']}'")
-                            except Exception:
-                                pass
-
-            nights = (nd_end_date - nd_start_date).days
-            label = f"{nights}박 {nights+1}일"
-            if nd_feasible:
-                st.success(f"✅ **{label} 약속 가능!** ({nd_start_date} {nd_start_time} ~ {nd_end_date} {nd_end_time})")
-                _my_room2 = st.session_state.my_joined_rooms.get(code, {})
-                _rinfo2   = db_get_room_info(code)
-                _rname2   = _my_room2.get("name") or (_rinfo2["name"] if _rinfo2 else code)
-                if st.button(f"🎉 {label} 약속 확정!", key="nd_confirm_btn", type="primary", use_container_width=True):
-                    db_save_event(st.session_state.user_id, {
-                        "title": f"{_rname2} {label} 약속",
-                        "start": f"{nd_start_date} {nd_start_time}",
-                        "end":   f"{nd_end_date} {nd_end_time}",
-                        "color": get_random_color(),
-                    })
-                    load_user_data()
-                    st.session_state.grp_confirmed_msg = f"✅ **{label} 약속이 확정되었습니다!** ({nd_start_date} {nd_start_time} ~ {nd_end_date} {nd_end_time}) 🎉"
-                    st.rerun()
-            else:
-                unique_reasons = list(dict.fromkeys(nd_fail_reasons))[:5]
-                st.error(f"❌ **{label} 약속 불가** — 중간 날짜에 일정이 있는 멤버가 있습니다.")
-                for r in unique_reasons:
-                    st.caption(f"• {r}")
-                if len(nd_fail_reasons) > 5:
-                    st.caption(f"... 외 {len(nd_fail_reasons)-5}건")
-
-
+            header_txt = f":{(slot_i % 4) * 15:02d}"
+        w_table += (
+            f"<th style='border:1px solid #ddd;padding:2px 1px;white-space:nowrap;"
+            f"font-size:8px;min-width:18px;'>{header_txt}</th>"
+        )
+    w_table += "</tr>"
+    for w_day in w_days:
+        w_table += f"<tr><td style='font-weight:bold;border:1px solid #ddd;padding:4px 6px;white-space:nowrap;'>{w_day}</td>"
+        for slot_i in slots_range:
+            is_free = True
+            for name, m_data in g_members.items():
+                for t in m_data.get("timetable", []):
+                    if t["day"] == w_day:
+                        try:
+                            sh, sm_v = map(int, t["start"].split(":"))
+                            eh, em_v = map(int, t["end"].split(":"))
+                            s_slot = sh * 4 + sm_v // 15
+                            e_slot = eh * 4 + em_v // 15
+                            if s_slot <= slot_i < e_slot:
+                                is_free = False
+                        except Exception:
+                            pass
+            bg = "#4CAF50" if is_free else "#F44336"
+            w_table += f"<td style='background-color:{bg};border:1px solid #ddd;height:20px;min-width:18px;'></td>"
+        w_table += "</tr>"
+    w_table += "</table></div>"
+    st.markdown(w_table, unsafe_allow_html=True)
 
 
 page = st.session_state.app_page
