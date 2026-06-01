@@ -382,7 +382,7 @@ def init_session():
         "grp_edit_name_open": False,
         "grp_edit_nick_open": False,
         "grp_leave_confirm":  False,
-        "nd_feasible_windows": None,
+        "nd_feasible_windows": {},
         "memo_editing_id": None,
     }
     for k, v in defaults.items():
@@ -1106,6 +1106,12 @@ def page_group_list():
                     st.session_state.grp_confirmed_msg = None
                     st.session_state.grp_edit_nick_open = False
                     st.session_state.grp_leave_confirm  = False
+                    st.session_state.grp_date_colors    = None
+                    st.session_state.grp_free_slots     = None
+                    st.session_state.grp_selected_day   = None
+                    if not isinstance(st.session_state.get("nd_feasible_windows"), dict):
+                        st.session_state["nd_feasible_windows"] = {}
+                    st.session_state["nd_feasible_windows"].pop(code, None)
                     st.session_state.app_page = "GROUP_ROOM"
                     st.rerun()
             else:
@@ -1126,6 +1132,12 @@ def page_group_list():
                     st.session_state.grp_confirmed_msg = None
                     st.session_state.grp_edit_nick_open = False
                     st.session_state.grp_leave_confirm  = False
+                    st.session_state.grp_date_colors    = None
+                    st.session_state.grp_free_slots     = None
+                    st.session_state.grp_selected_day   = None
+                    if not isinstance(st.session_state.get("nd_feasible_windows"), dict):
+                        st.session_state["nd_feasible_windows"] = {}
+                    st.session_state["nd_feasible_windows"].pop(join_code, None)
                     st.session_state.app_page = "GROUP_ROOM"
                     st.rerun()
                 else:
@@ -1148,6 +1160,12 @@ def page_group_list():
                     st.session_state.grp_confirmed_msg  = None
                     st.session_state.grp_edit_nick_open = False
                     st.session_state.grp_leave_confirm  = False
+                    st.session_state.grp_date_colors    = None
+                    st.session_state.grp_free_slots     = None
+                    st.session_state.grp_selected_day   = None
+                    if not isinstance(st.session_state.get("nd_feasible_windows"), dict):
+                        st.session_state["nd_feasible_windows"] = {}
+                    st.session_state["nd_feasible_windows"].pop(c, None)
                     st.session_state.app_page = "GROUP_ROOM"
                     st.rerun()
 
@@ -1461,153 +1479,157 @@ def page_group_room():
 
     if st.session_state.grp_date_colors is None:
         st.info("조건을 설정하고 '일정 대조하기' 버튼을 눌러보세요.")
-        return
-
-    colors  = st.session_state.grp_date_colors
-    start_d = st.session_state.grp_start_d
-    end_d   = st.session_state.grp_end_d
-    t_start = st.session_state.grp_time_start
-    t_end   = st.session_state.grp_time_end
 
     st.markdown("---")
-    green_cnt = sum(1 for v in colors.values() if v == "green")
-    red_cnt   = sum(1 for v in colors.values() if v == "red")
-    mc1, mc2, mc3 = st.columns(3)
-    mc1.metric("✅ 가능한 날",   f"{green_cnt}일")
-    mc2.metric("❌ 불가능한 날", f"{red_cnt}일")
-    mc3.metric("👥 참여 인원",  f"{len(g_members)}명")
+    # ── 당일 약속 섹션 (대조 결과가 있을 때만 표시)
+    if st.session_state.grp_date_colors is not None:
+        colors  = st.session_state.grp_date_colors
+        start_d = st.session_state.grp_start_d
+        end_d   = st.session_state.grp_end_d
+        t_start = st.session_state.grp_time_start
+        t_end   = st.session_state.grp_time_end
 
-    st.markdown("### 📅 일정 대조 달력")
-    st.markdown("<div style='font-size:12px;margin-bottom:8px;color:#555;'>🟢 가능 | 🔴 불가 | ⚪ 범위 외</div>", unsafe_allow_html=True)
+        green_cnt = sum(1 for v in colors.values() if v == "green")
+        red_cnt   = sum(1 for v in colors.values() if v == "red")
+        mc1, mc2, mc3 = st.columns(3)
+        mc1.metric("✅ 가능한 날",   f"{green_cnt}일")
+        mc2.metric("❌ 불가능한 날", f"{red_cnt}일")
+        mc3.metric("👥 참여 인원",  f"{len(g_members)}명")
 
-    render_year, render_month = start_d.year, start_d.month
-    end_year, end_month       = end_d.year, end_d.month
-    sel_day = st.session_state.grp_selected_day
-    while (render_year, render_month) <= (end_year, end_month):
-        st.markdown(f"##### 📅 {render_year}년 {render_month}월")
-        gcal_html = build_group_calendar_html(render_year, render_month, start_d, end_d, colors, sel_day)
-        st.markdown(gcal_html, unsafe_allow_html=True)
-        render_month += 1
-        if render_month > 12:
-            render_month = 1
-            render_year += 1
+        st.markdown("### 📅 일정 대조 달력")
+        st.markdown("<div style='font-size:12px;margin-bottom:8px;color:#555;'>🟢 가능 | 🔴 불가 | ⚪ 범위 외</div>", unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("**📌 날짜를 선택하면 가능 시간대를 분석해요**")
+        render_year, render_month = start_d.year, start_d.month
+        end_year, end_month       = end_d.year, end_d.month
+        sel_day = st.session_state.grp_selected_day
+        while (render_year, render_month) <= (end_year, end_month):
+            st.markdown(f"##### 📅 {render_year}년 {render_month}월")
+            gcal_html = build_group_calendar_html(render_year, render_month, start_d, end_d, colors, sel_day)
+            st.markdown(gcal_html, unsafe_allow_html=True)
+            render_month += 1
+            if render_month > 12:
+                render_month = 1
+                render_year += 1
 
-    green_days = sorted([k for k, v in colors.items() if v == "green"])
-    all_days   = sorted(colors.keys())
-    if green_days:
-        default_sel = date_type.fromisoformat(green_days[0])
-    elif all_days:
-        default_sel = date_type.fromisoformat(all_days[0])
-    else:
-        default_sel = start_d
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("**📌 날짜를 선택하면 가능 시간대를 분석해요**")
 
-    cur_sel_obj = (date_type.fromisoformat(sel_day) if sel_day and sel_day in colors else default_sel)
-    grp_picked = st.date_input("날짜 선택", value=cur_sel_obj, min_value=start_d, max_value=end_d, key="grp_date_picker", label_visibility="collapsed")
-    if isinstance(grp_picked, date_type):
-        new_sel = grp_picked.strftime("%Y-%m-%d")
-        if new_sel != st.session_state.grp_selected_day:
-            st.session_state.grp_selected_day  = new_sel
-            st.session_state.grp_confirmed_msg = None
-            st.rerun()
+        green_days = sorted([k for k, v in colors.items() if v == "green"])
+        all_days   = sorted(colors.keys())
+        if green_days:
+            default_sel = date_type.fromisoformat(green_days[0])
+        elif all_days:
+            default_sel = date_type.fromisoformat(all_days[0])
+        else:
+            default_sel = start_d
 
-    if sel_day and sel_day in colors:
-        slots = st.session_state.grp_free_slots.get(sel_day, [False] * 96)
-        sy, sm, sd = map(int, sel_day.split("-"))
+        cur_sel_obj = (date_type.fromisoformat(sel_day) if sel_day and sel_day in colors else default_sel)
+        grp_picked = st.date_input("날짜 선택", value=cur_sel_obj, min_value=start_d, max_value=end_d, key="grp_date_picker", label_visibility="collapsed")
+        if isinstance(grp_picked, date_type):
+            new_sel = grp_picked.strftime("%Y-%m-%d")
+            if new_sel != st.session_state.grp_selected_day:
+                st.session_state.grp_selected_day  = new_sel
+                st.session_state.grp_confirmed_msg = None
+                st.rerun()
 
-        st.markdown("---")
-        st.markdown(f"### 📊 {sy}년 {sm}월 {sd}일 분석")
-        bar_rows = []
-        total_hours = (t_end + 3) // 4  # 다음날 포함 시 24시간 초과 가능
-        if t_end > 96:
-            total_hours = 24 + (t_end - 96 + 3) // 4
-        for hour_idx in range(max(24, total_hours)):
-            hour_label = f"다음날 {hour_idx-24:02d}:00" if hour_idx >= 24 else f"{hour_idx:02d}:00"
-            cells = "".join(
-                '<div style="background:{bg};flex:1;height:18px;border-radius:2px;margin:0 1px;"></div>'.format(
-                    bg="#4CAF50" if (slots[hour_idx*4+mi] if hour_idx*4+mi < len(slots) else False) else "#F44336"
+        if sel_day and sel_day in colors:
+            slots = st.session_state.grp_free_slots.get(sel_day, [False] * 96)
+            sy, sm, sd = map(int, sel_day.split("-"))
+
+            st.markdown("---")
+            st.markdown(f"### 📊 {sy}년 {sm}월 {sd}일 분석")
+            bar_rows = []
+            total_hours = (t_end + 3) // 4  # 다음날 포함 시 24시간 초과 가능
+            if t_end > 96:
+                total_hours = 24 + (t_end - 96 + 3) // 4
+            for hour_idx in range(max(24, total_hours)):
+                hour_label = f"다음날 {hour_idx-24:02d}:00" if hour_idx >= 24 else f"{hour_idx:02d}:00"
+                cells = "".join(
+                    '<div style="background:{bg};flex:1;height:18px;border-radius:2px;margin:0 1px;"></div>'.format(
+                        bg="#4CAF50" if (slots[hour_idx*4+mi] if hour_idx*4+mi < len(slots) else False) else "#F44336"
+                    )
+                    for mi in range(4)
                 )
-                for mi in range(4)
-            )
-            bar_rows.append(
-                '<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px;">' +
-                f'<span style="font-size:10px;color:#555;min-width:60px;text-align:right;">{hour_label}</span>' +
-                f'<div style="display:flex;flex:1;">{cells}</div>' +
+                bar_rows.append(
+                    '<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px;">' +
+                    f'<span style="font-size:10px;color:#555;min-width:60px;text-align:right;">{hour_label}</span>' +
+                    f'<div style="display:flex;flex:1;">{cells}</div>' +
+                    '</div>'
+                )
+            bar_html = (
+                '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;background:#fafafa;border:1px solid #ddd;border-radius:8px;padding:10px;margin-bottom:8px;">' +
+                "".join(bar_rows) +
+                '</div>' +
+                '<div style="font-size:11px;color:#555;margin-bottom:12px;">' +
+                '<span style="background:#4CAF50;padding:2px 8px;border-radius:3px;color:white;margin-right:8px;">가능</span>' +
+                '<span style="background:#F44336;padding:2px 8px;border-radius:3px;color:white;">불가</span>' +
                 '</div>'
             )
-        bar_html = (
-            '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;background:#fafafa;border:1px solid #ddd;border-radius:8px;padding:10px;margin-bottom:8px;">' +
-            "".join(bar_rows) +
-            '</div>' +
-            '<div style="font-size:11px;color:#555;margin-bottom:12px;">' +
-            '<span style="background:#4CAF50;padding:2px 8px;border-radius:3px;color:white;margin-right:8px;">가능</span>' +
-            '<span style="background:#F44336;padding:2px 8px;border-radius:3px;color:white;">불가</span>' +
-            '</div>'
-        )
-        st.markdown(bar_html, unsafe_allow_html=True)
+            st.markdown(bar_html, unsafe_allow_html=True)
 
-        # ── [MODIFIED] 약속 확정: 15분 단위 선택 (다음날 포함)
-        st.markdown("---")
-        st.markdown("### ⏰ 시간 직접 설정하여 확정하기")
-        def conf_start_label(i):
-            return f"{i // 4:02d}:{(i % 4) * 15:02d}"
-        def conf_end_label(i):
-            if i >= 96:
-                return f"다음날 {(i-96) // 4:02d}:{((i-96) % 4) * 15:02d}"
-            return f"{i // 4:02d}:{(i % 4) * 15:02d}"
-        conf_opts_start = list(range(96))
-        conf_opts_end   = list(range(1, 145))  # 다음날 12:00까지
-        conf_c1, conf_c2 = st.columns(2)
-        with conf_c1:
-            conf_start_idx = st.selectbox(
-                "시작",
-                options=conf_opts_start,
-                index=min(t_start, 95),
-                format_func=conf_start_label,
-                key="grp_conf_start"
-            )
-            conf_start = conf_start_label(conf_start_idx)
-        with conf_c2:
-            conf_end_idx = st.selectbox(
-                "종료",
-                options=conf_opts_end,
-                index=min(t_end - 1, 143),
-                format_func=conf_end_label,
-                key="grp_conf_end"
-            )
-            conf_end_raw = conf_end_label(conf_end_idx)
-            # 다음날이면 날짜를 다음날로 계산
-            if conf_end_idx >= 96:
-                sel_date_obj_next = date_type.fromisoformat(sel_day) + timedelta(days=1)
-                conf_end_date = sel_date_obj_next.strftime("%Y-%m-%d")
-                conf_end_time = f"{(conf_end_idx-96) // 4:02d}:{((conf_end_idx-96) % 4) * 15:02d}"
-            else:
-                conf_end_date = sel_day
-                conf_end_time = conf_end_raw
-        if st.button("🔗 커스텀 시간으로 약속 확정", type="primary", use_container_width=True):
-            if conf_start_idx >= conf_end_idx:
-                st.error("종료 시각은 시작 시각보다 늦어야 합니다.")
-            else:
-                # 내가 설정한 커스텀 이름 우선, 없으면 원래 방이름
-                _my_room = st.session_state.my_joined_rooms.get(code, {})
-                _rinfo   = db_get_room_info(code)
-                _rname   = _my_room.get("name") or (_rinfo["name"] if _rinfo else code)
-                end_label_display = conf_end_raw if conf_end_idx < 96 else f"다음날 {conf_end_time}"
-                confirmed_event = {
-                    "title": f"{_rname} 약속",
-                    "start": f"{sel_day} {conf_start}",
-                    "end":   f"{conf_end_date} {conf_end_time}",
-                    "color": get_random_color(),
-                }
-                db_save_event(st.session_state.user_id, confirmed_event)
-                load_user_data()
-                st.session_state.grp_confirmed_msg = f"✅ **{sy}년 {sm}월 {sd}일 {conf_start} ~ {end_label_display}** 약속이 확정되었습니다! 🎉"
-                st.rerun()
-        if st.session_state.grp_confirmed_msg:
-            st.success(st.session_state.grp_confirmed_msg)
-            st.balloons()
+            # ── [MODIFIED] 약속 확정: 15분 단위 선택 (다음날 포함)
+            st.markdown("---")
+            st.markdown("### ⏰ 시간 직접 설정하여 확정하기")
+            def conf_start_label(i):
+                return f"{i // 4:02d}:{(i % 4) * 15:02d}"
+            def conf_end_label(i):
+                if i >= 96:
+                    return f"다음날 {(i-96) // 4:02d}:{((i-96) % 4) * 15:02d}"
+                return f"{i // 4:02d}:{(i % 4) * 15:02d}"
+            conf_opts_start = list(range(96))
+            conf_opts_end   = list(range(1, 145))  # 다음날 12:00까지
+            conf_c1, conf_c2 = st.columns(2)
+            with conf_c1:
+                conf_start_idx = st.selectbox(
+                    "시작",
+                    options=conf_opts_start,
+                    index=min(t_start, 95),
+                    format_func=conf_start_label,
+                    key="grp_conf_start"
+                )
+                conf_start = conf_start_label(conf_start_idx)
+            with conf_c2:
+                conf_end_idx = st.selectbox(
+                    "종료",
+                    options=conf_opts_end,
+                    index=min(t_end - 1, 143),
+                    format_func=conf_end_label,
+                    key="grp_conf_end"
+                )
+                conf_end_raw = conf_end_label(conf_end_idx)
+                # 다음날이면 날짜를 다음날로 계산
+                if conf_end_idx >= 96:
+                    sel_date_obj_next = date_type.fromisoformat(sel_day) + timedelta(days=1)
+                    conf_end_date = sel_date_obj_next.strftime("%Y-%m-%d")
+                    conf_end_time = f"{(conf_end_idx-96) // 4:02d}:{((conf_end_idx-96) % 4) * 15:02d}"
+                else:
+                    conf_end_date = sel_day
+                    conf_end_time = conf_end_raw
+            if st.button("🔗 커스텀 시간으로 약속 확정", type="primary", use_container_width=True):
+                if conf_start_idx >= conf_end_idx:
+                    st.error("종료 시각은 시작 시각보다 늦어야 합니다.")
+                else:
+                    # 내가 설정한 커스텀 이름 우선, 없으면 원래 방이름
+                    _my_room = st.session_state.my_joined_rooms.get(code, {})
+                    _rinfo   = db_get_room_info(code)
+                    _rname   = _my_room.get("name") or (_rinfo["name"] if _rinfo else code)
+                    end_label_display = conf_end_raw if conf_end_idx < 96 else f"다음날 {conf_end_time}"
+                    confirmed_event = {
+                        "title": f"{_rname} 약속",
+                        "start": f"{sel_day} {conf_start}",
+                        "end":   f"{conf_end_date} {conf_end_time}",
+                        "color": get_random_color(),
+                    }
+                    # 그룹 내 모든 멤버 캘린더에 추가
+                    members_res = supabase.table("room_members").select("user_id").eq("room_code", code).execute()
+                    for m in (members_res.data or []):
+                        db_save_event(m["user_id"], confirmed_event)
+                    load_user_data()
+                    st.session_state.grp_confirmed_msg = f"✅ **{sy}년 {sm}월 {sd}일 {conf_start} ~ {end_label_display}** 약속이 확정되었습니다! 🎉"
+                    st.rerun()
+            if st.session_state.grp_confirmed_msg:
+                st.success(st.session_state.grp_confirmed_msg)
+                st.balloons()
 
     # ── n박 n일 약속 잡기
     st.markdown("---")
@@ -1636,9 +1658,19 @@ def page_group_room():
 
         feasible_windows = []  # [(시작날짜, 끝날짜), ...]
 
+        # 날짜 범위: 일정 대조 결과가 있으면 그 범위 사용, 없으면 현재 달 전체
+        if st.session_state.grp_start_d and st.session_state.grp_end_d:
+            nd_start_d = st.session_state.grp_start_d
+            nd_end_d   = st.session_state.grp_end_d
+        else:
+            nd_now = datetime.now(KST)
+            nd_last_day = calendar.monthrange(nd_now.year, nd_now.month)[1]
+            nd_start_d = date_type(nd_now.year, nd_now.month, 1)
+            nd_end_d   = date_type(nd_now.year, nd_now.month, nd_last_day)
+
         # 범위 내 모든 시작 가능 날짜 탐색
-        cur = start_d
-        while cur + timedelta(days=nd_nights) <= end_d:
+        cur = nd_start_d
+        while cur + timedelta(days=nd_nights) <= nd_end_d:
             window_start = cur
             window_end   = cur + timedelta(days=nd_nights)
             feasible = True
@@ -1729,15 +1761,20 @@ def page_group_room():
 
             cur += timedelta(days=1)
 
-        st.session_state["nd_feasible_windows"] = feasible_windows
+        if not isinstance(st.session_state.get("nd_feasible_windows"), dict):
+            st.session_state["nd_feasible_windows"] = {}
+        st.session_state["nd_feasible_windows"][code] = feasible_windows
         st.session_state["nd_result_nights"]    = nd_nights
         st.session_state["nd_result_stime"]     = nd_start_time
         st.session_state["nd_result_etime"]     = nd_end_time
         st.rerun()
 
     # 결과 표시
-    if st.session_state.get("nd_feasible_windows") is not None:
-        fw      = st.session_state["nd_feasible_windows"]
+    nd_windows_dict = st.session_state.get("nd_feasible_windows", {})
+    if not isinstance(nd_windows_dict, dict):
+        nd_windows_dict = {}
+    if code in nd_windows_dict:
+        fw      = nd_windows_dict[code]
         f_nights = st.session_state.get("nd_result_nights", 2)
         f_label  = f"{f_nights}박 {f_nights+1}일"
         f_stime  = st.session_state.get("nd_result_stime", "10:00")
@@ -1760,18 +1797,22 @@ def page_group_room():
                         _my_room2 = st.session_state.my_joined_rooms.get(code, {})
                         _rinfo2   = db_get_room_info(code)
                         _rname2   = _my_room2.get("name") or (_rinfo2["name"] if _rinfo2 else code)
-                        db_save_event(st.session_state.user_id, {
+                        _nd_event = {
                             "title": f"{_rname2} {f_label} 약속",
                             "start": f"{ws.strftime('%Y-%m-%d')} {f_stime}",
                             "end":   f"{we.strftime('%Y-%m-%d')} {f_etime}",
                             "color": get_random_color(),
-                        })
+                        }
+                        # 그룹 내 모든 멤버 캘린더에 추가
+                        members_res2 = supabase.table("room_members").select("user_id").eq("room_code", code).execute()
+                        for _m in (members_res2.data or []):
+                            db_save_event(_m["user_id"], _nd_event)
                         load_user_data()
                         st.session_state.grp_confirmed_msg = (
                             f"✅ **{f_label} 약속 확정!** "
                             f"{ws.month}/{ws.day} {f_stime} ~ {we.month}/{we.day} {f_etime} 🎉"
                         )
-                        st.session_state["nd_feasible_windows"] = None
+                        st.session_state["nd_feasible_windows"].pop(code, None)
                         st.rerun()
         else:
             st.error(f"❌ 대조 범위 내에 **{f_label}** 가능한 날짜가 없습니다.")
