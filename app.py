@@ -1642,6 +1642,15 @@ def page_group_room():
     with nd_col2:
         st.markdown(f"<div style='padding-top:28px;font-size:14px;color:#555;'>→ <b>{nd_nights}박 {nd_nights+1}일</b></div>", unsafe_allow_html=True)
 
+    # n박 n일 전용 날짜 범위 선택
+    nd_now_dt = datetime.now(KST)
+    nd_last_day_default = calendar.monthrange(nd_now_dt.year, nd_now_dt.month)[1]
+    nd_date_range = st.date_input(
+        "📅 탐색할 날짜 범위",
+        value=(date_type(nd_now_dt.year, nd_now_dt.month, 1), date_type(nd_now_dt.year, nd_now_dt.month, nd_last_day_default)),
+        key="nd_date_range"
+    )
+
     nd_time_col1, nd_time_col2 = st.columns(2)
     nd_time_opts = [f"{i // 4:02d}:{(i % 4) * 15:02d}" for i in range(96)]
     with nd_time_col1:
@@ -1658,15 +1667,12 @@ def page_group_room():
 
         feasible_windows = []  # [(시작날짜, 끝날짜), ...]
 
-        # 날짜 범위: 일정 대조 결과가 있으면 그 범위 사용, 없으면 현재 달 전체
-        if st.session_state.grp_start_d and st.session_state.grp_end_d:
-            nd_start_d = st.session_state.grp_start_d
-            nd_end_d   = st.session_state.grp_end_d
+        # n박 n일 전용 날짜 범위 사용
+        if isinstance(nd_date_range, tuple) and len(nd_date_range) == 2:
+            nd_start_d, nd_end_d = nd_date_range
         else:
-            nd_now = datetime.now(KST)
-            nd_last_day = calendar.monthrange(nd_now.year, nd_now.month)[1]
-            nd_start_d = date_type(nd_now.year, nd_now.month, 1)
-            nd_end_d   = date_type(nd_now.year, nd_now.month, nd_last_day)
+            nd_start_d = date_type(nd_now_dt.year, nd_now_dt.month, 1)
+            nd_end_d   = date_type(nd_now_dt.year, nd_now_dt.month, nd_last_day_default)
 
         # 범위 내 모든 시작 가능 날짜 탐색
         cur = nd_start_d
@@ -1816,6 +1822,10 @@ def page_group_room():
                         st.rerun()
         else:
             st.error(f"❌ 대조 범위 내에 **{f_label}** 가능한 날짜가 없습니다.")
+
+    if st.session_state.grp_confirmed_msg and "박" in st.session_state.grp_confirmed_msg:
+        st.success(st.session_state.grp_confirmed_msg)
+        st.balloons()
 
 
 
