@@ -284,6 +284,26 @@ def db_update_custom_room_name(user_id, room_code, custom_name):
         st.error(f"방이름 변경 오류: {e}")
         return False
 
+def db_update_nickname(user_id, room_code, new_nickname):
+    """room_members의 nickname 변경 — 모든 멤버 화면에 반영"""
+    try:
+        supabase.table("room_members").update({"nickname": new_nickname}) \
+            .eq("user_id", user_id).eq("room_code", room_code).execute()
+        return True
+    except Exception as e:
+        st.error(f"닉네임 변경 오류: {e}")
+        return False
+
+def db_leave_room(user_id, room_code):
+    """room_members에서 해당 행 삭제 (방 나가기)"""
+    try:
+        supabase.table("room_members").delete() \
+            .eq("user_id", user_id).eq("room_code", room_code).execute()
+        return True
+    except Exception as e:
+        st.error(f"방 나가기 오류: {e}")
+        return False
+
 
 def init_session():
     now_kst = datetime.now(KST)
@@ -315,6 +335,8 @@ def init_session():
         "ft_success_msg": None,
         "grp_confirmed_msg": None,
         "grp_edit_name_open": False,
+        "grp_edit_nick_open": False,
+        "grp_leave_confirm":  False,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -945,6 +967,8 @@ def page_group_list():
                     st.session_state.my_joined_rooms[code] = {"name": g_name, "my_nickname": nickname}
                     st.success(f"✅ 방 코드: **`{code}`** 를 친구에게 공유하세요!")
                     st.session_state.grp_confirmed_msg = None
+                    st.session_state.grp_edit_nick_open = False
+                    st.session_state.grp_leave_confirm  = False
                     st.session_state.app_page = "GROUP_ROOM"
                     st.rerun()
             else:
@@ -963,6 +987,8 @@ def page_group_list():
                         "my_nickname": nickname,
                     }
                     st.session_state.grp_confirmed_msg = None
+                    st.session_state.grp_edit_nick_open = False
+                    st.session_state.grp_leave_confirm  = False
                     st.session_state.app_page = "GROUP_ROOM"
                     st.rerun()
                 else:
@@ -983,6 +1009,8 @@ def page_group_list():
                     st.session_state.current_group_code = c
                     st.session_state.my_nickname        = info["my_nickname"]
                     st.session_state.grp_confirmed_msg  = None
+                    st.session_state.grp_edit_nick_open = False
+                    st.session_state.grp_leave_confirm  = False
                     st.session_state.app_page = "GROUP_ROOM"
                     st.rerun()
 
@@ -1088,10 +1116,23 @@ def page_group_room():
             st.info(f"{len(g_members)}명: {', '.join(g_members.keys())}")
         if st.button("✏️ 방이름 수정", use_container_width=True, key="grp_toggle_edit_name"):
             st.session_state["grp_edit_name_open"] = not st.session_state.get("grp_edit_name_open", False)
+            st.session_state["grp_edit_nick_open"] = False
+            st.session_state["grp_leave_confirm"]  = False
+            st.rerun()
+        if st.button("🙋 닉네임 변경", use_container_width=True, key="grp_toggle_edit_nick"):
+            st.session_state["grp_edit_nick_open"] = not st.session_state.get("grp_edit_nick_open", False)
+            st.session_state["grp_edit_name_open"] = False
+            st.session_state["grp_leave_confirm"]  = False
+            st.rerun()
+        if st.button("🚪 방 나가기", use_container_width=True, key="grp_toggle_leave"):
+            st.session_state["grp_leave_confirm"]  = not st.session_state.get("grp_leave_confirm", False)
+            st.session_state["grp_edit_name_open"] = False
+            st.session_state["grp_edit_nick_open"] = False
             st.rerun()
     with h1:
         st.title(f"🏢 {display_room_name}")
 
+    # ── 방이름 수정 UI
     if st.session_state.get("grp_edit_name_open", False):
         st.markdown("#### ✏️ 나에게만 표시되는 방이름 수정")
         st.caption(f"원래 방이름: {room_info['name']}")
@@ -1112,6 +1153,51 @@ def page_group_room():
         with rc2:
             if st.button("취소", key="grp_cancel_custom_name", use_container_width=True):
                 st.session_state["grp_edit_name_open"] = False
+                st.rerun()
+        st.markdown("---")
+
+    # ── 닉네임 수정 UI
+    if st.session_state.get("grp_edit_nick_open", False):
+        st.markdown("#### 🙋 닉네임 변경")
+        st.caption(f"현재 닉네임: {st.session_state.my_nickname}")
+        new_nick = st.text_input("새 닉네임", value=st.session_state.my_nickname, key="grp_new_nick_input")
+        nc1, nc2 = st.columns(2)
+        with nc1:
+            if st.button("💾 저장", key="grp_save_nick", use_container_width=True):
+                new_nick = new_nick.strip()
+                if not new_nick:
+                    st.warning("닉네임을 입력해주세요.")
+                elif new_nick in g_members and new_nick != st.session_state.my_nickname:
+                    st.warning("이미 사용 중인 닉네임입니다.")
+                else:
+                    if db_update_nickname(st.session_state.user_id, code, new_nick):
+                        st.session_state.my_nickname = new_nick
+                        if code in st.session_state.my_joined_rooms:
+                            st.session_state.my_joined_rooms[code]["my_nickname"] = new_nick
+                        st.session_state["grp_edit_nick_open"] = False
+                        st.rerun()
+        with nc2:
+            if st.button("취소", key="grp_cancel_nick", use_container_width=True):
+                st.session_state["grp_edit_nick_open"] = False
+                st.rerun()
+        st.markdown("---")
+
+    # ── 방 나가기 UI
+    if st.session_state.get("grp_leave_confirm", False):
+        st.warning(f"**정말 '{display_room_name}' 방을 나가시겠습니까?** 나가면 이 방의 약속 조율에 참여할 수 없습니다.")
+        lc1, lc2 = st.columns(2)
+        with lc1:
+            if st.button("✅ 나가기", key="grp_confirm_leave", use_container_width=True):
+                if db_leave_room(st.session_state.user_id, code):
+                    if code in st.session_state.my_joined_rooms:
+                        del st.session_state.my_joined_rooms[code]
+                    st.session_state["grp_leave_confirm"]  = False
+                    st.session_state.current_group_code    = None
+                    st.session_state.app_page = "GROUP_LIST"
+                    st.rerun()
+        with lc2:
+            if st.button("취소", key="grp_cancel_leave", use_container_width=True):
+                st.session_state["grp_leave_confirm"] = False
                 st.rerun()
         st.markdown("---")
 
